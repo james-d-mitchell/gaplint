@@ -108,6 +108,9 @@ class RuleOutput(object):
 # Rules: a rule is just a function or callable class returning a RuleOutput
 ################################################################################
 
+def _skip_tst_or_xml_file(ext):
+    return ext == 'tst' or ext == 'xml'
+
 class Rule(object):
     '''
     Base class for rules.
@@ -115,6 +118,7 @@ class Rule(object):
     A rule is a subclass of this class which has a __call__ method that returns
     a RuleOutput object.
     '''
+
     def reset(self):
         '''
         Reset the rule.
@@ -123,6 +127,15 @@ class Rule(object):
         lines. This method is called once per file on which gaplint it run, so
         that issues with indentation, for example, in one file do not spill
         over into the next file.
+        '''
+        pass
+
+    def skip(self, ext):
+        '''
+        Skip the rule.
+
+        In some circumstances we might want to skip a rule, the rule is skipped
+        if this method returns True. The default return value is falsy.
         '''
         pass
 
@@ -179,12 +192,12 @@ class ReplaceQuotes(Rule):
 
     def __call__(self, line):
         assert isinstance(line, str)
+        ro = RuleOutput(line)
         quote = self._quote
         replacement = self._replacement
         # TODO if we want to allow the script to modify the input, then we
         # better keep the removed strings/chars, and index the replacements so
         # that we can put them back at some point later on.
-        ro = RuleOutput(line)
         beg = line.find(quote)
         if beg > 0 and line[beg - 1] == '\\':
             ro.msg = 'line starts with escaped quote!'
@@ -227,6 +240,27 @@ class RemoveComments(Rule):
         assert isinstance(line, str)
         return RuleOutput(line[:line.find('#')])
 
+class RemovePrefix(object):
+    '''
+    This is not a rule. This is just a callable class to remove the prefix
+    'gap>' or '>' if called with a line from a file with extension 'tst' or
+    'xml', if the line does not start with a 'gap>' or '>', then the entire
+    line is replaced with __REMOVED_LINE_FROM_TST_OR_XML_FILE__.
+    '''
+    def __init__(self):
+        self._gap_gt_prefix = re.compile(r'^gap>')
+        self._gt_prefix = re.compile(r'^>')
+
+    def __call__(self, line, ext):
+        if ext != 'tst' and ext != 'xml':
+            return line
+        m = self._gap_gt_prefix.search(line) or self._gt_prefix.search(line)
+        if m:
+            line = line[m.end():]
+        else:
+            line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
+        return line
+
 class LineTooLong(Rule):
     '''
     Warn if the length of a line exceeds 80 characters.
@@ -247,7 +281,11 @@ class WarnRegex(Rule):
     exceptions is also matched.
     '''
 
-    def __init__(self, pattern, warning_msg, exceptions=[]):
+    def __init__(self,
+                 pattern,
+                 warning_msg,
+                 exceptions=[],
+                 skip=lambda ext: None):
         #pylint: disable=bad-builtin, unnecessary-lambda, deprecated-lambda
         assert isinstance(pattern, str)
         assert isinstance(warning_msg, str)
@@ -259,6 +297,7 @@ class WarnRegex(Rule):
         self._exception_patterns = exceptions
         self._exception_group = None
         self._exceptions = map(lambda e: re.compile(e), exceptions)
+        self._skip = skip
 
     def __call__(self, line):
         nr_matches = 0
@@ -286,14 +325,17 @@ class WarnRegex(Rule):
             msg = self._warning_msg
         return RuleOutput(line, msg, False)
 
+    def skip(self, ext):
+        return self._skip(ext)
+
 class WhitespaceOperator(WarnRegex):
     '''
     Instances of this class produce a warning whenever the whitespace around an
     operator is incorrect.
     '''
     def __init__(self, op, exceptions=[]):
-        #pylint: disable=super-init-not-called
         #pylint: disable=bad-builtin, deprecated-lambda, unnecessary-lambda
+        WarnRegex.__init__(self, '', '')
         assert isinstance(op, str)
         assert op[0] != '(' and op[-1] != ')'
         assert exceptions is None or isinstance(exceptions, list)
@@ -358,6 +400,9 @@ class Indentation(Rule):
 
     def reset(self):
         self._expected = 0
+
+    def skip(self, ext):
+        return _skip_tst_or_xml_file(ext)
 
 class ConsecutiveEmptyLines(WarnRegex):
     '''
@@ -440,8 +485,13 @@ def _parse_args(kwargs):
 # TODO allow skipping a file in that file
 # gaplint: skip-file
 
+_remove_prefix = RemovePrefix()
+
 RULES = [LineTooLong(),
-         WarnRegex(r'^.*\s+\n$', 'trailing whitespace!'),
+         WarnRegex(r'^.*\s+\n$',
+                   'trailing whitespace!',
+                   [],
+                   _skip_tst_or_xml_file),
          ReplaceMultilineStrings(),
          ReplaceQuotes('"', '__REMOVED_STRING__'),
          WarnRegex(r'#{3,}.*\w', 'too many hashes!!'),
@@ -456,7 +506,10 @@ RULES = [LineTooLong(),
                    'no space allowed after bracket'),
          WarnRegex(r'\s(\)|\]|\})',
                    'no space allowed before bracket'),
-         WarnRegex(r';.*;', 'more than one semicolon!'),
+         WarnRegex(r';.*;',
+                   'more than one semicolon!',
+                   [],
+                   _skip_tst_or_xml_file),
          WarnRegex(r'(\s|^)function[^\(]',
                    'keyword function not followed by ('),
          WarnRegex(r'(\S:=|:=(\S|\s{2,}))',
@@ -477,7 +530,7 @@ RULES = [LineTooLong(),
          WhitespaceOperator(r'=', [r'(:|>|<)=', r'^\s*=', r'Method\(\\=']),
          WhitespaceOperator(r'->'),
          WhitespaceOperator(r'\/', [r'Method\(\\\/']),
-         WhitespaceOperator(r'\^', [r'^\s*\^', r'Method\(\\\^']),
+         WhitespaceOperator(r'\^', [r'^\s*\^', r'\\\^']),
          WhitespaceOperator(r'<>', [r'^\s*<>']),
          WhitespaceOperator(r'\.\.', [r'\.\.(\.|\))'])]
 
@@ -509,19 +562,22 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         except IOError:
             _exit_abort('cannot read ' + fname)
 
+        ext = fname.split('.')[-1]
         nr_warnings = 0
         for i in xrange(len(lines)):
+            lines[i] = _remove_prefix(lines[i], ext)
             for rule in RULES:
-                ro = rule(lines[i])
-                assert isinstance(ro, RuleOutput)
-                if ro.msg:
-                    nr_warnings += 1
-                    _info_warn(fname, i, ro.msg, len(lines))
-                if ro.abort:
-                    _exit_abort()
-                lines[i] = ro.line
-                if total_nr_warnings + nr_warnings >= args.max_warnings:
-                    _exit_abort('Too many warnings')
+                if not rule.skip(ext):
+                    ro = rule(lines[i])
+                    assert isinstance(ro, RuleOutput)
+                    if ro.msg:
+                        nr_warnings += 1
+                        _info_warn(fname, i, ro.msg, len(lines))
+                    if ro.abort:
+                        _exit_abort()
+                    lines[i] = ro.line
+                    if total_nr_warnings + nr_warnings >= args.max_warnings:
+                        _exit_abort('Too many warnings')
         for rule in RULES:
             rule.reset()
         total_nr_warnings += nr_warnings
