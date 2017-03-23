@@ -283,7 +283,7 @@ class WarnRegex(Rule):
             else:
                 nr_matches += 1
         if nr_matches > 0:
-            msg = (self._warning_msg + '  [' + str(nr_matches) + ']')
+            msg = self._warning_msg
         return RuleOutput(line, msg, False)
 
 class WhitespaceOperator(WarnRegex):
