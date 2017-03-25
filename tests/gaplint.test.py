@@ -75,7 +75,7 @@ class TestRules(unittest.TestCase):
         self.assertEquals(ro.abort, True)
 
         ro = rule(r'\"')
-        self.assertEquals(ro.msg,'line starts with escaped quote!')
+        self.assertEquals(ro.msg,'escaped quote outside string!')
         self.assertEquals(ro.abort, True)
 
         ro = rule(r'"a string followed by an escaped quote", \"')

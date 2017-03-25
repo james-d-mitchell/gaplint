@@ -190,6 +190,21 @@ class ReplaceQuotes(Rule):
     def __init__(self, quote, replacement):
         self._quote = quote
         self._replacement = replacement
+        self._escape_pattern = re.compile(r'(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)')
+
+    def _is_escaped(self, line, pos):
+        if line[pos - 1] != '\\':
+            return False
+        # search for an odd number of backslashes immediately before line[pos]
+        return self._escape_pattern.search(line[:pos][::-1])
+
+    def _next_nonescaped_quote(self, line, pos):
+        assert isinstance(line, str) and isinstance(pos, int)
+        assert pos >= 0 and pos < len(line)
+        pos = line.find(self._quote, pos)
+        while pos > 0 and self._is_escaped(line, pos):
+            pos = line.find(self._quote, pos + 1)
+        return pos
 
     def __call__(self, line):
         assert isinstance(line, str)
@@ -200,14 +215,14 @@ class ReplaceQuotes(Rule):
         # better keep the removed strings/chars, and index the replacements so
         # that we can put them back at some point later on.
         beg = line.find(quote)
-        if beg > 0 and line[beg - 1] == '\\':
-            ro.msg = 'line starts with escaped quote!'
+        if beg == -1:
+            return ro
+        elif self._is_escaped(line, beg):
+            ro.msg = 'escaped quote outside string!'
             ro.abort = True
             return ro
+        end = self._next_nonescaped_quote(line, beg + 1)
 
-        end = line.find(quote, beg + 1)
-        while end > 0 and line[end - 1] == '\\':
-            end = line.find(quote, end + 1)
         while beg != -1:
             if end == -1:
                 ro.msg = 'unmatched quote!'
@@ -216,14 +231,11 @@ class ReplaceQuotes(Rule):
             line = line[:beg] + replacement + line[end + 1:]
             beg = line.find(quote, beg + len(replacement) + 1)
 
-            if beg > 0 and line[beg - 1] == '\\':
+            if beg > 0 and self._is_escaped(line, beg):
                 ro.msg = 'escaped quote outside string!'
                 ro.abort = True
                 break
-
-            end = line.find(quote, beg + 1)
-            while line[end - 1] == '\\':
-                end = line.find(quote, end + 1)
+            end = self._next_nonescaped_quote(line, beg + 1)
         ro.line = line
         return ro
 

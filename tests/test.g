@@ -30,3 +30,5 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 if x = 1 then 
 Print("testing inappropriate indentation");
 fi;
+"A string containing escaped backslashes right at the end \\";
+"A string \\containing escaped \"backslashes\" right at the end \\\\";
