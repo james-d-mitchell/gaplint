@@ -55,16 +55,16 @@ def _exit_abort(message=None):
 
 def _info_statement(message):
     assert isinstance(message, str)
-    print _neon_green_string(message)
+    sys.stdout.write(_neon_green_string(message + '\n'))
 
 def _info_action(message):
     assert isinstance(message, str)
-    print _yellow_string(message)
+    sys.stdout.write(_yellow_string(message + '\n'))
 
 def _info_verbose(message):
     assert isinstance(message, str)
     if not _SILENT and _VERBOSE:
-        print _orange_string(message)
+        sys.stdout.write(_orange_string(message + '\n'))
 
 def _info_warn(fname, line_nr, message, nr_lines):
     assert isinstance(fname, str) and isinstance(message, str)
@@ -72,8 +72,9 @@ def _info_warn(fname, line_nr, message, nr_lines):
 
     if not _SILENT:
         pad = ((len(str(nr_lines)) + 1) - len(str(line_nr + 1)))
-        print _red_string('WARNING in ' + fname + ':' + str(line_nr + 1) +
-                          ' ' * pad + message)
+        sys.stderr.write(_red_string('WARNING in ' + fname + ':'
+                                     + str(line_nr + 1) + ' ' * pad
+                                     + message + '\n'))
 
 ################################################################################
 # Rule output
@@ -585,8 +586,9 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
             _info_statement('SUCCESS in ' + fname)
     if total_nr_warnings != 0:
         if not _SILENT:
-            print _red_string('FAILED with ' + str(total_nr_warnings) +
-                              ' warnings!')
+            sys.stderr.write(_red_string('FAILED with '
+                                         + str(total_nr_warnings)
+                                         + ' warnings!\n'))
             if __name__ == '__main__':
                 sys.exit(1)
     if __name__ == '__main__':
