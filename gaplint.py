@@ -261,17 +261,27 @@ class RemovePrefix(object):
     line is replaced with __REMOVED_LINE_FROM_TST_OR_XML_FILE__.
     '''
     def __init__(self):
+        self._consuming = False
         self._gap_gt_prefix = re.compile(r'^gap>')
         self._gt_prefix = re.compile(r'^>')
+        # TODO if linting an xml file warn about whitespace before gap> or >
 
     def __call__(self, line, ext):
-        if ext != 'tst' and ext != 'xml':
-            return line
-        m = self._gap_gt_prefix.search(line) or self._gt_prefix.search(line)
-        if m:
-            line = line[m.end():]
-        else:
-            line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
+        if ext == 'tst' or ext == 'xml':
+            if self._consuming:
+                m = self._gt_prefix.search(line)
+                if m:
+                    line = line[m.end():]
+                else:
+                    line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
+                    self._consuming = False
+            else:
+                m = self._gap_gt_prefix.search(line)
+                if m:
+                    line = line[m.end():]
+                    self._consuming = True
+                else:
+                    line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
         return line
 
 class LineTooLong(Rule):
