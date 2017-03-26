@@ -488,6 +488,139 @@ class ConsecutiveEmptyLines(WarnRegex):
     def reset(self):
         self._prev_line_empty = False
 
+class UnusedLVarsFunc(Rule):
+    '''
+    This rule checks if there are unused local variables in a function.
+    '''
+    def __init__(self):
+        self._consuming_args = False
+        self._consuming_lvars = False
+        self._depth = -1
+        self._args = []
+        self._lvars = []
+        self._function_p = re.compile(r'(^|\W)(function)(\W)')
+        self._end_p = re.compile(r'(^|\W)end\W')
+        self._local_p = re.compile(r'(^|\W)(local)(\W)')
+        self._var_p = re.compile(r'\w+')
+        self._keywords = {'true', 'false', 'continue', 'break', 'if', 'fi',
+                          'else', 'for', 'od', 'while', 'repeat', 'until',
+                          'return', '__REMOVED_STRING__', '__REMOVED_CHAR__'}
+
+    def _is_function_declared(self, line):
+        return self._function_p.search(line)
+
+    def _is_end_declared(self, line):
+        return self._end_p.search(line)
+
+    def _is_local_declared(self, line):
+        return self._local_p.search(line)
+
+    def _add_function_args(self, line, start=0, end=-1):
+        ro = RuleOutput(line)
+        new_args = self._var_p.findall(line, start, end)
+        args = self._args[self._depth]
+        for var in new_args:
+            if var in args:
+                ro.msg = 'duplicate function argument: ' + var
+                ro.abort = True
+            elif var in self._keywords:
+                ro.msg = 'function argument is keyword: ' + var
+                ro.abort = True
+            else:
+                args.add(var)
+        self._consuming_args = (line.find(')', start) == -1)
+        return ro
+
+    def _new_function(self, line):
+        m = self._function_p.search(line)
+        assert m
+        assert not self._consuming_args and not self._consuming_lvars
+        self._depth += 1
+        assert self._depth == len(self._args)
+        assert self._depth == len(self._lvars)
+        self._lvars.append(set())
+        self._args.append(set())
+        start = line.find('(', m.start(3)) + 1
+        end = line.find(')', start)
+        if end == -1:
+            self._consuming_args = True
+        return self._add_function_args(line, start, end)
+
+    def _end_function(self, line):
+        assert self._end_p.search(line)
+        assert not self._consuming_args and not self._consuming_lvars
+
+        ro = RuleOutput(line)
+        self._depth -= 1
+        lvars = [key for key in self._lvars.pop()]
+        args = [key for key in self._args.pop()]
+        # TODO should use the number of the line where function declared
+        if len(lvars) != 0:
+            ro.msg = 'unused local variables: '
+            ro.msg += reduce(lambda x, y: x + ', ' + y, lvars[1:], lvars[0])
+        # TODO the following produces too many warnings, there are plenty of
+        # places where there are legitimately unused function arguments
+        #if len(args) != 0:
+        #    ro.msg = 'unused function arguments: '
+        #    ro.msg += reduce(lambda x, y: x + ', ' + y, args[1:], args[0])
+        return ro
+
+    def _add_lvars(self, line):
+        ro = RuleOutput(line)
+        end = line.find(';')
+        self._consuming_lvars = (end == -1)
+        lvars = self._lvars[self._depth]
+        args = self._args[self._depth]
+        new_lvars = self._var_p.findall(line, 0, end)
+        for var in new_lvars:
+            if var in lvars:
+                ro.msg = 'name used for two locals: ' + var
+                ro.abort = True
+            elif var in args:
+                ro.msg = 'name used for argument and local: ' + var
+                ro.abort = True
+            elif var in self._keywords:
+                ro.msg = 'local is keyword: ' + var
+                ro.abort = True
+            elif var != 'local':
+                lvars.add(var)
+        return ro
+
+    def _remove_lvars(self, line):
+        ro = RuleOutput(line)
+        lvars = self._var_p.findall(line)
+        for var in lvars:
+            for depth in xrange(0, self._depth + 1):
+                self._lvars[depth].discard(var)
+                self._args[depth].discard(var)
+            # could detect unbound globals here (maybe)
+        return ro
+
+    def __call__(self, line):
+        ro = RuleOutput(line)
+        if self._is_function_declared(line):
+            ro = self._new_function(line)
+            if not ro.msg and self._is_end_declared(line):
+                ro = self._remove_lvars(line)
+                ro = self._end_function(line)
+        elif self._is_local_declared(line) or self._consuming_lvars:
+            ro = self._add_lvars(line)
+            if not ro.msg and self._is_end_declared(line):
+                ro = self._remove_lvars(line)
+                ro = self._end_function(line)
+        elif self._is_end_declared(line):
+            ro = self._end_function(line)
+        elif self._consuming_args:
+            ro = self._add_function_args(line, 0, line.find(')'))
+        elif self._consuming_lvars:
+            ro = self._add_lvars(line)
+        elif self._depth >= 0:
+            ro = self._remove_lvars(line)
+        return ro
+
+    def skip(self, ext):
+        return _skip_tst_or_xml_file(ext)
+
 ################################################################################
 # Functions for running this as a script instead of a module
 ################################################################################
@@ -584,6 +717,8 @@ RULES = [LineTooLong(),
                    'wrong whitespace around operator :='),
          WarnRegex(r'\t',
                    'there are tabs in this line, replace with spaces!'),
+         WarnRegex(r'function\W.*\Wlocal\W',
+                   'keywords function and local in the same line'),
          WhitespaceOperator(r'\+', [r'^\s*\+']),
          WhitespaceOperator(r'\*', [r'^\s*\*', r'\\\*']),
          WhitespaceOperator(r'-',
@@ -602,7 +737,8 @@ RULES = [LineTooLong(),
          WhitespaceOperator(r'\/', [r'\\\/']),
          WhitespaceOperator(r'\^', [r'^\s*\^', r'\\\^']),
          WhitespaceOperator(r'<>', [r'^\s*<>']),
-         WhitespaceOperator(r'\.\.', [r'\.\.(\.|\))'])]
+         WhitespaceOperator(r'\.\.', [r'\.\.(\.|\))']),
+         UnusedLVarsFunc()]
 
 ################################################################################
 # The main event
@@ -638,7 +774,14 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
             lines[i] = _remove_prefix(lines[i], ext)
             for rule in RULES:
                 if not rule.skip(ext):
-                    ro = rule(lines[i])
+                    try:
+                        ro = rule(lines[i])
+                    except AssertionError:
+                        sys.stdout.write(
+                            _red_string('Assertion in ' + fname +
+                                        ':' + str(i + 1)) + '\n')
+                        raise
+
                     assert isinstance(ro, RuleOutput)
                     if ro.msg:
                         nr_warnings += 1

@@ -38,4 +38,23 @@ Print("testing inappropriate indentation");
 fi;
 "A string containing escaped backslashes right at the end \\";
 "A string \\containing escaped \"backslashes\" right at the end \\\\";
-# 19 warnings total
+foo := function(x, y, z) local t; return x + y + z; end;
+foo := function(x, y, localt, 1a1a, 1b)
+end;
+#foo := function(x, x) end;
+foo := function(x, y, z)
+  local t;
+  return x + y + z;
+end;
+#foo := function(x, y, x)
+#  local t;
+#  return x + y + z;
+#end;
+#foo := function(x, y, z)
+#  local a, b, c, z;
+#  return x + y + z;
+#end;
+foo := function(x, y, z)
+  return x + y;
+end;
+# 22 warnings
