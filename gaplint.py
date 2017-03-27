@@ -54,27 +54,27 @@ def _exit_abort(message=None):
 ################################################################################
 
 def _info_statement(message):
-    assert isinstance(message, str)
-    sys.stdout.write(_neon_green_string(message + '\n'))
+    if not _SILENT:
+        assert isinstance(message, str)
+        sys.stdout.write(_neon_green_string(message) + '\n')
 
 def _info_action(message):
     assert isinstance(message, str)
-    sys.stdout.write(_yellow_string(message + '\n'))
+    sys.stdout.write(_yellow_string(message) + '\n')
 
 def _info_verbose(message):
-    assert isinstance(message, str)
     if not _SILENT and _VERBOSE:
-        sys.stdout.write(_orange_string(message + '\n'))
+        assert isinstance(message, str)
+        sys.stdout.write(_orange_string(message) + '\n')
 
 def _info_warn(fname, line_nr, message, nr_lines):
-    assert isinstance(fname, str) and isinstance(message, str)
-    assert isinstance(line_nr, int) and isinstance(nr_lines, int)
-
     if not _SILENT:
+        assert isinstance(fname, str) and isinstance(message, str)
+        assert isinstance(line_nr, int) and isinstance(nr_lines, int)
         pad = ((len(str(nr_lines)) + 1) - len(str(line_nr + 1)))
         sys.stderr.write(_red_string('WARNING in ' + fname + ':'
                                      + str(line_nr + 1) + ' ' * pad
-                                     + message + '\n'))
+                                     + message) + '\n')
 
 ################################################################################
 # Rule output
@@ -191,6 +191,7 @@ class ReplaceQuotes(Rule):
         self._quote = quote
         self._replacement = replacement
         self._escape_pattern = re.compile(r'(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)')
+        self._consuming = False
 
     def _is_escaped(self, line, pos):
         if line[pos - 1] != '\\':
@@ -207,36 +208,56 @@ class ReplaceQuotes(Rule):
         return pos
 
     def __call__(self, line):
+        # TODO if we want to allow the script to modify the input, then we
+        # better keep the removed strings/chars, and index the replacements so
+        # that we can put them back at some point later on.
         assert isinstance(line, str)
         ro = RuleOutput(line)
         quote = self._quote
         replacement = self._replacement
-        # TODO if we want to allow the script to modify the input, then we
-        # better keep the removed strings/chars, and index the replacements so
-        # that we can put them back at some point later on.
-        beg = line.find(quote)
+        cont_replacement = replacement[:-1] + 'CONTINUATION__'
+
+        if self._consuming:
+            end = self._next_nonescaped_quote(line, 0)
+            if end == -1:
+                if ro.line[-1] == '\\':
+                    ro.line = cont_replacement
+                else:
+                    ro.msg = 'invalid continuation of string'
+                    ro.abort = True
+                return ro
+            self._consuming = False
+            ro.line = cont_replacement + ro.line[end + 1:]
+            pos = end + 1
+        else:
+            pos = 0
+
+        beg = ro.line.find(quote, pos)
         if beg == -1:
             return ro
-        elif self._is_escaped(line, beg):
+        elif self._is_escaped(ro.line, beg):
             ro.msg = 'escaped quote outside string!'
             ro.abort = True
             return ro
-        end = self._next_nonescaped_quote(line, beg + 1)
+        end = self._next_nonescaped_quote(ro.line, beg + 1)
 
         while beg != -1:
             if end == -1:
-                ro.msg = 'unmatched quote!'
-                ro.abort = True
+                if ro.line[-1] == '\\':
+                    self._consuming = True
+                    ro.line = ro.line[:beg] + cont_replacement
+                else:
+                    ro.msg = 'unmatched quote!'
+                    ro.abort = True
                 break
-            line = line[:beg] + replacement + line[end + 1:]
-            beg = line.find(quote, beg + len(replacement) + 1)
+            ro.line = ro.line[:beg] + replacement + ro.line[end + 1:]
+            beg = ro.line.find(quote, beg + len(replacement) + 1)
 
-            if beg > 0 and self._is_escaped(line, beg):
+            if beg > 0 and self._is_escaped(ro.line, beg):
                 ro.msg = 'escaped quote outside string!'
                 ro.abort = True
                 break
-            end = self._next_nonescaped_quote(line, beg + 1)
-        ro.line = line
+            end = self._next_nonescaped_quote(ro.line, beg + 1)
         return ro
 
 class RemoveComments(Rule):
@@ -251,7 +272,10 @@ class RemoveComments(Rule):
     '''
     def __call__(self, line):
         assert isinstance(line, str)
-        return RuleOutput(line[:line.find('#')])
+        if line.find('#') != -1:
+            return RuleOutput(line[:line.find('#')])
+        else:
+            return RuleOutput(line)
 
 class RemovePrefix(object):
     '''
@@ -262,13 +286,17 @@ class RemovePrefix(object):
     '''
     def __init__(self):
         self._consuming = False
-        self._gap_gt_prefix = re.compile(r'^gap>')
-        self._gt_prefix = re.compile(r'^>')
+        self._gap_gt_prefix = re.compile(r'^gap>\s*')
+        self._gt_prefix = re.compile(r'^>\s*')
         # TODO if linting an xml file warn about whitespace before gap> or >
 
     def __call__(self, line, ext):
         if ext == 'tst' or ext == 'xml':
-            if self._consuming:
+            m = self._gap_gt_prefix.search(line)
+            if m:
+                line = line[m.end():]
+                self._consuming = True
+            elif self._consuming:
                 m = self._gt_prefix.search(line)
                 if m:
                     line = line[m.end():]
@@ -276,12 +304,7 @@ class RemovePrefix(object):
                     line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
                     self._consuming = False
             else:
-                m = self._gap_gt_prefix.search(line)
-                if m:
-                    line = line[m.end():]
-                    self._consuming = True
-                else:
-                    line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
+                line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
         return line
 
 class LineTooLong(Rule):
@@ -403,9 +426,6 @@ class Indentation(Rule):
         for pair in self._before:
             if pair[0].search(line):
                 self._expected += pair[1]
-
-        _info_verbose(line + ' [expected indentation level ' +
-                      str(self._expected) + ']')
 
         if self._get_indent_level(line) < self._expected:
             ro.msg = ('bad indentation: found ' +
@@ -588,7 +608,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         ext = fname.split('.')[-1]
         nr_warnings = 0
         for i in xrange(len(lines)):
-            lines[i] = _remove_prefix(lines[i], ext)
+            lines[i] = _remove_prefix(lines[i], ext).rstrip()
             for rule in RULES:
                 if not rule.skip(ext):
                     ro = rule(lines[i])
@@ -601,6 +621,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
                     lines[i] = ro.line
                     if total_nr_warnings + nr_warnings >= args.max_warnings:
                         _exit_abort('Too many warnings')
+            _info_verbose(lines[i])
         for rule in RULES:
             rule.reset()
         total_nr_warnings += nr_warnings

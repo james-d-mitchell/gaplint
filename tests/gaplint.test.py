@@ -13,8 +13,11 @@ import gaplint
 from gaplint import run_gaplint
 
 class TestScript(unittest.TestCase):
-    def test_fake(self):
+    def test_dot_g_file(self):
         run_gaplint(files=['tests/test.g'], silent=True)
+
+    def test_dot_tst_file(self):
+        run_gaplint(files=['tests/test.tst'], silent=True)
 
     def test_exit_abort(self):
         with self.assertRaises(SystemExit):
