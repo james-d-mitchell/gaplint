@@ -13,8 +13,11 @@ import gaplint
 from gaplint import run_gaplint
 
 class TestScript(unittest.TestCase):
-    def test_dot_g_file(self):
+    def test_dot_g_file1(self):
         run_gaplint(files=['tests/test.g'], silent=True)
+
+    def test_dot_g_file2(self):
+        run_gaplint(files=['tests/test2.g'], silent=True)
 
     def test_dot_tst_file(self):
         run_gaplint(files=['tests/test.tst'], silent=True)
@@ -75,14 +78,6 @@ class TestRules(unittest.TestCase):
 
         ro = rule('"an unmatched quote')
         self.assertEquals(ro.msg,'unmatched quote!')
-        self.assertEquals(ro.abort, True)
-
-        ro = rule(r'\"')
-        self.assertEquals(ro.msg,'escaped quote outside string!')
-        self.assertEquals(ro.abort, True)
-
-        ro = rule(r'"a string followed by an escaped quote", \"')
-        self.assertEquals(ro.msg,'escaped quote outside string!')
         self.assertEquals(ro.abort, True)
 
         ro = rule(r'a := "a string containing escaped \"quotes\""; b := "\"2\"";')

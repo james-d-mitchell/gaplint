@@ -112,6 +112,16 @@ class RuleOutput(object):
 def _skip_tst_or_xml_file(ext):
     return ext == 'tst' or ext == 'xml'
 
+_ESCAPE_PATTERN = re.compile(r'(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)')
+
+def _is_escaped(line, pos):
+    assert isinstance(line, str) and isinstance(pos, int)
+    assert pos >= 0 and pos < len(line)
+    if line[pos - 1] != '\\':
+        return False
+    # Search for an odd number of backslashes immediately before line[pos]
+    return _ESCAPE_PATTERN.search(line[:pos][::-1])
+
 class Rule(object):
     '''
     Base class for rules.
@@ -139,6 +149,40 @@ class Rule(object):
         if this method returns True. The default return value is falsy.
         '''
         pass
+
+class RemoveComments(Rule):
+    '''
+    Remove the GAP comments in a line.
+
+    When called this rule truncates the line given as a parameter to remove any
+    comments. This is to avoid matching linting issues within comments, where
+    the issues do not apply.
+
+    This rule does not return any warnings.
+    '''
+
+    def _is_in_string(self, line, pos):
+        assert isinstance(line, str) and isinstance(pos, int)
+        assert pos >= 0 and pos < len(line)
+        nr_double, nr_single = 0, 0
+        for i in xrange(pos):
+            if (line[i] == '"' and not _is_escaped(line, i)
+                    and (nr_single % 2 == 0)):
+                nr_double += 1
+            elif (line[i] == "'" and not _is_escaped(line, i)
+                  and (nr_double % 2 == 0)):
+                nr_single += 1
+        return (nr_double % 2 != 0) or (nr_single % 2 != 0)
+
+    def __call__(self, line):
+        assert isinstance(line, str)
+        i = line.find('#')
+        while i > 0 and self._is_in_string(line, i):
+            i = line.find('#', i + 1)
+        if i != -1:
+            return RuleOutput(line[:i])
+        else:
+            return RuleOutput(line)
 
 class ReplaceMultilineStrings(Rule):
     '''
@@ -190,20 +234,22 @@ class ReplaceQuotes(Rule):
     def __init__(self, quote, replacement):
         self._quote = quote
         self._replacement = replacement
-        self._escape_pattern = re.compile(r'(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)')
+        self._cont_replacement = replacement[:-1] + 'CONTINUATION__'
         self._consuming = False
 
-    def _is_escaped(self, line, pos):
-        if line[pos - 1] != '\\':
-            return False
-        # search for an odd number of backslashes immediately before line[pos]
-        return self._escape_pattern.search(line[:pos][::-1])
-
-    def _next_nonescaped_quote(self, line, pos):
+    def _is_double_quote_in_char(self, line, pos): #pylint: disable=no-self-use
         assert isinstance(line, str) and isinstance(pos, int)
-        assert pos >= 0 and pos < len(line)
+        return (pos > 0 and pos + 1 < len(line)
+                and line[pos - 1:pos + 1] == "'\"'"
+                and not _is_escaped(line, pos - 1))
+
+    def _next_valid_quote(self, line, pos):
+        assert isinstance(line, str) and isinstance(pos, int)
+        assert pos >= 0
         pos = line.find(self._quote, pos)
-        while pos > 0 and self._is_escaped(line, pos):
+        while (pos >= 0
+               and (_is_escaped(line, pos)
+                    or self._is_double_quote_in_char(line, pos))):
             pos = line.find(self._quote, pos + 1)
         return pos
 
@@ -212,70 +258,44 @@ class ReplaceQuotes(Rule):
         # better keep the removed strings/chars, and index the replacements so
         # that we can put them back at some point later on.
         assert isinstance(line, str)
+        cont_replacement = self._cont_replacement
         ro = RuleOutput(line)
-        quote = self._quote
-        replacement = self._replacement
-        cont_replacement = replacement[:-1] + 'CONTINUATION__'
+        beg = 0
 
         if self._consuming:
-            end = self._next_nonescaped_quote(line, 0)
-            if end == -1:
+            end = self._next_valid_quote(line, 0)
+            if end != -1:
+                self._consuming = False
+                ro.line = cont_replacement + ro.line[end + 1:]
+                beg = end + 1
+            else:
                 if ro.line[-1] == '\\':
+                    # TODO _is_escaped(line, len(line) - 1) after removing
+                    # rstripping
                     ro.line = cont_replacement
                 else:
                     ro.msg = 'invalid continuation of string'
                     ro.abort = True
                 return ro
-            self._consuming = False
-            ro.line = cont_replacement + ro.line[end + 1:]
-            pos = end + 1
-        else:
-            pos = 0
 
-        beg = ro.line.find(quote, pos)
-        if beg == -1:
-            return ro
-        elif self._is_escaped(ro.line, beg):
-            ro.msg = 'escaped quote outside string!'
-            ro.abort = True
-            return ro
-        end = self._next_nonescaped_quote(ro.line, beg + 1)
+        replacement = self._replacement
+        beg = self._next_valid_quote(ro.line, beg)
 
         while beg != -1:
+            end = self._next_valid_quote(ro.line, beg + 1)
             if end == -1:
                 if ro.line[-1] == '\\':
+                    # TODO _is_escaped(line, len(line) - 1) after removing
+                    # rstripping
                     self._consuming = True
                     ro.line = ro.line[:beg] + cont_replacement
-                else:
+                elif ro.line[beg - 1:beg + 2] != "'\"'":
                     ro.msg = 'unmatched quote!'
                     ro.abort = True
                 break
             ro.line = ro.line[:beg] + replacement + ro.line[end + 1:]
-            beg = ro.line.find(quote, beg + len(replacement) + 1)
-
-            if beg > 0 and self._is_escaped(ro.line, beg):
-                ro.msg = 'escaped quote outside string!'
-                ro.abort = True
-                break
-            end = self._next_nonescaped_quote(ro.line, beg + 1)
+            beg = self._next_valid_quote(ro.line, beg + len(replacement) + 1)
         return ro
-
-class RemoveComments(Rule):
-    '''
-    Remove the GAP comments in a line.
-
-    When called this rule truncates the line given as a parameter to remove any
-    comments. This is to avoid matching linting issues within comments, where
-    the issues do not apply.
-
-    This rule does not return any warnings.
-    '''
-    def __call__(self, line):
-        assert isinstance(line, str)
-        if line.find('#') != -1:
-            return RuleOutput(line[:line.find('#')])
-        else:
-            return RuleOutput(line)
 
 class RemovePrefix(object):
     '''
@@ -407,15 +427,15 @@ class Indentation(Rule):
     '''
     def __init__(self):
         self._expected = 0
-        self._before = [(re.compile('( |^)(elif|else)( |$)'), -2),
-                        (re.compile(r'( |^)end(;|\)|,)'), -2),
-                        (re.compile('( |^)(until|od|fi);'), -2),
-                        (re.compile('( |^)until '), -2)]
-        self._after = [(re.compile(r'\s(then|do)(\s|$)'), -2),
-                       (re.compile(r'( |^)(repeat|else)(\s|$)'), 2),
-                       (re.compile(r'( |^)function(\s|\()'), 2),
-                       (re.compile('( |^)(if|for|while|elif) '), 4)]
-        self._indent = re.compile(r'^( *)\S')
+        self._before = [(re.compile(r'(\W|^)(elif|else)(\W|$)'), -2),
+                        (re.compile(r'(\W|^)end(\W|$)'), -2),
+                        (re.compile(r'(\W|^)(od|fi)(\W|$)'), -2),
+                        (re.compile(r'(\W|^)until(\W|$)'), -2)]
+        self._after = [(re.compile(r'(\W|^)(then|do)(\W|$)'), -2),
+                       (re.compile(r'(\W|^)(repeat|else)(\W|$)'), 2),
+                       (re.compile(r'(\W|^)function(\W|$)'), 2),
+                       (re.compile(r'(\W|^)(if|for|while|elif)(\W|$)'), 4)]
+        self._indent = re.compile(r'^(\s*)\S')
         self._blank = re.compile(r'^\s*$')
 
     def __call__(self, line):
@@ -529,20 +549,18 @@ def _parse_args(kwargs):
 # gaplint: skip-file
 
 _remove_prefix = RemovePrefix()
-
 RULES = [LineTooLong(),
+         ConsecutiveEmptyLines(),
          WarnRegex(r'^.*\s+\n$',
                    'trailing whitespace!',
                    [],
                    _skip_tst_or_xml_file),
+         RemoveComments(),
          ReplaceMultilineStrings(),
          ReplaceQuotes('"', '__REMOVED_STRING__'),
-         WarnRegex(r'#{3,}.*\w', 'too many hashes!!'),
-         ConsecutiveEmptyLines(),
-         RemoveComments(),
          ReplaceQuotes('\'', '__REMOVED_CHAR__'),
          Indentation(),
-         WarnRegex(r',(([^, ]+)|( {2,})\w)',
+         WarnRegex(r',(([^,\s]+)|(\s{2,})\w)',
                    'exactly one space required after comma'),
          WarnRegex(r'\s,', 'no space before comma'),
          WarnRegex(r'(\(|\[|\{)\s',
@@ -617,11 +635,12 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
                         nr_warnings += 1
                         _info_warn(fname, i, ro.msg, len(lines))
                     if ro.abort:
-                        _exit_abort()
+                        _exit_abort(str(total_nr_warnings + nr_warnings)
+                                    + ' warnings')
                     lines[i] = ro.line
                     if total_nr_warnings + nr_warnings >= args.max_warnings:
                         _exit_abort('Too many warnings')
-            _info_verbose(lines[i])
+            _info_verbose(fname + ':' + str(i + 1) + ' ' + lines[i])
         for rule in RULES:
             rule.reset()
         total_nr_warnings += nr_warnings
