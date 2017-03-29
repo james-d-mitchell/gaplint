@@ -170,27 +170,17 @@ class RemoveComments(Rule):
     '''
 
     def _is_in_string(self, line, pos):
-        assert isinstance(line, str) and isinstance(pos, int)
-        assert pos >= 0 and pos < len(line)
-        nr_double, nr_single = 0, 0
-        for i in xrange(pos):
-            if (line[i] == '"' and not _is_escaped(line, i)
-                    and (nr_single % 2 == 0)):
-                nr_double += 1
-            elif (line[i] == "'" and not _is_escaped(line, i)
-                  and (nr_double % 2 == 0)):
-                nr_single += 1
-        return (nr_double % 2 != 0) or (nr_single % 2 != 0)
+        line = re.sub(r'\\.', '', line[:pos])
+        return line.count('"') % 2 == 1 or line.count("'") % 2 == 1
 
     def __call__(self, line):
         assert isinstance(line, str)
-        i = line.find('#')
-        while i > 0 and self._is_in_string(line, i):
-            i = line.find('#', i + 1)
-        if i != -1:
-            return RuleOutput(line[:i] + _eol(line))
-        else:
+        try:
+            i = next(i for i in xrange(len(line)) if line[i] == '#' and not
+                     self._is_in_string(line, i))
+        except StopIteration:
             return RuleOutput(line)
+        return RuleOutput(line[:i] + _eol(line))
 
 class ReplaceMultilineStrings(Rule):
     '''
