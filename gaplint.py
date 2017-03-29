@@ -222,6 +222,12 @@ class ReplaceMultilineStrings(Rule):
     def reset(self):
         self._consuming = False
 
+def _is_double_quote_in_char(line, pos):
+    assert isinstance(line, str) and isinstance(pos, int)
+    return (pos > 0 and pos + 1 < len(line)
+            and line[pos - 1:pos + 2] == '\'"\''
+            and not _is_escaped(line, pos - 1))
+
 class ReplaceQuotes(Rule):
     '''
     Remove everything between non-escaped <quote>s in a line.
@@ -239,19 +245,13 @@ class ReplaceQuotes(Rule):
         self._cont_replacement = replacement[:-1] + 'CONTINUATION__'
         self._consuming = False
 
-    def _is_double_quote_in_char(self, line, pos): #pylint: disable=no-self-use
-        assert isinstance(line, str) and isinstance(pos, int)
-        return (pos > 0 and pos + 1 < len(line)
-                and line[pos - 1:pos + 1] == "'\"'"
-                and not _is_escaped(line, pos - 1))
-
     def _next_valid_quote(self, line, pos):
         assert isinstance(line, str) and isinstance(pos, int)
         assert pos >= 0
         pos = line.find(self._quote, pos)
         while (pos >= 0
                and (_is_escaped(line, pos)
-                    or self._is_double_quote_in_char(line, pos))):
+                    or _is_double_quote_in_char(line, pos))):
             pos = line.find(self._quote, pos + 1)
         return pos
 
