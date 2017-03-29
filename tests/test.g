@@ -6,16 +6,22 @@ x := "duplicate-free"; # 0 warnings
 x := "askjdaskjd"+"aksjdalskjd"; # 1 warning
 x := "#";  # 0 warnings
 x ^ -1;  # 0 warnings
-x ^ - 1; # Should give a warning but doesn't
+x ^ - 1; # 1 warning
 x := "\"dasjlkdjsa\""; # 0 warnings
 x^ 90 # 1 warning
 if x <>3 then# 1 warning
 fi;
 [1..10] # 1 warning 
 function(arg...) # 0 warnings
+  return - 1; # 1 warning
 end;
+return -1 * [1 .. 2]; # 0 warning
+return - 1 * [1 .. 2]; # 1 warning
+return [1 .. 2] * -1; # 0 warning
+return [1 .. 2] * - 1; # 1 warning
 x :=  3;
 x:= 1;
+x   := 1;
 
 
 [ 1 .. 2]; # 1 warning
@@ -32,3 +38,4 @@ Print("testing inappropriate indentation");
 fi;
 "A string containing escaped backslashes right at the end \\";
 "A string \\containing escaped \"backslashes\" right at the end \\\\";
+# 19 warnings total
