@@ -116,7 +116,9 @@ _ESCAPE_PATTERN = re.compile(r'(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)')
 
 def _is_escaped(line, pos):
     assert isinstance(line, str) and isinstance(pos, int)
-    assert pos >= 0 and pos < len(line)
+    assert (pos >= 0 and pos < len(line)) or (pos < 0 and len(line) + pos > 0)
+    if pos < 0:
+        pos = len(line) + pos
     if line[pos - 1] != '\\':
         return False
     # Search for an odd number of backslashes immediately before line[pos]
