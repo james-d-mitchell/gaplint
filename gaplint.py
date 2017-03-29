@@ -271,9 +271,7 @@ class ReplaceQuotes(Rule):
                 ro.line = cont_replacement + ro.line[end + 1:]
                 beg = end + 1
             else:
-                if ro.line[-1] == '\\':
-                    # TODO _is_escaped(line, len(line) - 1) after removing
-                    # rstripping
+                if _is_escaped(line, -1):
                     ro.line = cont_replacement
                 else:
                     ro.msg = 'invalid continuation of string'
@@ -286,9 +284,7 @@ class ReplaceQuotes(Rule):
         while beg != -1:
             end = self._next_valid_quote(ro.line, beg + 1)
             if end == -1:
-                if ro.line[-1] == '\\':
-                    # TODO _is_escaped(line, len(line) - 1) after removing
-                    # rstripping
+                if _is_escaped(line, -1):
                     self._consuming = True
                     ro.line = ro.line[:beg] + cont_replacement
                 elif ro.line[beg - 1:beg + 2] != "'\"'":
@@ -565,7 +561,7 @@ RULES = [LineTooLong(),
          WarnRegex(r',(([^,\s]+)|(\s{2,})\w)',
                    'exactly one space required after comma'),
          WarnRegex(r'\s,', 'no space before comma'),
-         WarnRegex(r'(\(|\[|\{)\s',
+         WarnRegex(r'(\(|\[|\{)[ \t\f\v]',
                    'no space allowed after bracket'),
          WarnRegex(r'\s(\)|\]|\})',
                    'no space allowed before bracket'),
@@ -628,7 +624,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         ext = fname.split('.')[-1]
         nr_warnings = 0
         for i in xrange(len(lines)):
-            lines[i] = _remove_prefix(lines[i], ext).rstrip()
+            lines[i] = _remove_prefix(lines[i], ext)
             for rule in RULES:
                 if not rule.skip(ext):
                     ro = rule(lines[i])
