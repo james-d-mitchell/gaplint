@@ -38,6 +38,12 @@ def _orange_string(string):
     assert isinstance(string, str)
     return '\033[40;38;5;208m' + string + '\033[0m'
 
+def _pad(lines, linenum):
+    return len(str(len(lines))) + 1 - len(str(linenum + 1))
+
+def _eol(line):
+    return (line[-1] == '\n') * '\n'
+
 ################################################################################
 # Exit messages
 ################################################################################
@@ -62,18 +68,18 @@ def _info_action(message):
     assert isinstance(message, str)
     sys.stdout.write(_yellow_string(message) + '\n')
 
-def _info_verbose(message):
+def _info_verbose(fname, linenum, message, pad=1):
     if not _SILENT and _VERBOSE:
         assert isinstance(message, str)
-        sys.stdout.write(_orange_string(message) + '\n')
+        sys.stdout.write(_orange_string(fname + ':' + str(linenum + 1)
+                                        + ' ' * pad + message))
 
-def _info_warn(fname, line_nr, message, nr_lines):
+def _info_warn(fname, linenum, message, pad=1):
     if not _SILENT:
         assert isinstance(fname, str) and isinstance(message, str)
-        assert isinstance(line_nr, int) and isinstance(nr_lines, int)
-        pad = ((len(str(nr_lines)) + 1) - len(str(line_nr + 1)))
+        assert isinstance(linenum, int) and isinstance(pad, int)
         sys.stderr.write(_red_string('WARNING in ' + fname + ':'
-                                     + str(line_nr + 1) + ' ' * pad
+                                     + str(linenum + 1) + ' ' * pad
                                      + message) + '\n')
 
 ################################################################################
@@ -182,7 +188,7 @@ class RemoveComments(Rule):
         while i > 0 and self._is_in_string(line, i):
             i = line.find('#', i + 1)
         if i != -1:
-            return RuleOutput(line[:i])
+            return RuleOutput(line[:i] + _eol(line))
         else:
             return RuleOutput(line)
 
@@ -208,6 +214,8 @@ class ReplaceMultilineStrings(Rule):
             if end != -1:
                 ro.line += line[end + 3:]
                 self._consuming = False
+            else:
+                ro.line += _eol(line)
         else:
             start = line.find('"""')
             if start != -1:
@@ -217,6 +225,8 @@ class ReplaceMultilineStrings(Rule):
                 if end != -1:
                     self._consuming = False
                     ro.line += line[end + 3:]
+                else:
+                    ro.line += _eol(line)
         return ro
 
     def reset(self):
@@ -272,7 +282,7 @@ class ReplaceQuotes(Rule):
                 beg = end + 1
             else:
                 if _is_escaped(line, -1):
-                    ro.line = cont_replacement
+                    ro.line = cont_replacement + _eol(line)
                 else:
                     ro.msg = 'invalid continuation of string'
                     ro.abort = True
@@ -284,9 +294,9 @@ class ReplaceQuotes(Rule):
         while beg != -1:
             end = self._next_valid_quote(ro.line, beg + 1)
             if end == -1:
-                if _is_escaped(line, -1):
+                if _is_escaped(ro.line, -1):
                     self._consuming = True
-                    ro.line = ro.line[:beg] + cont_replacement
+                    ro.line = ro.line[:beg] + cont_replacement + _eol(line)
                 else:
                     ro.msg = 'unmatched quote ' + self._quote
                     ro.msg += ' in column ' + str(beg + 1)
@@ -320,10 +330,10 @@ class RemovePrefix(object):
                 if m:
                     line = line[m.end():]
                 else:
-                    line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
+                    line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__' + _eol(line)
                     self._consuming = False
             else:
-                line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__'
+                line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__' + _eol(line)
         return line
 
 class LineTooLong(Rule):
@@ -634,14 +644,14 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
                     assert isinstance(ro, RuleOutput)
                     if ro.msg:
                         nr_warnings += 1
-                        _info_warn(fname, i, ro.msg, len(lines))
+                        _info_warn(fname, i, ro.msg, _pad(lines, i))
                     if ro.abort:
                         _exit_abort(str(total_nr_warnings + nr_warnings)
                                     + ' warnings')
                     lines[i] = ro.line
                     if total_nr_warnings + nr_warnings >= args.max_warnings:
-                        _exit_abort('Too many warnings')
-            _info_verbose(fname + ':' + str(i + 1) + ' ' + lines[i])
+                        _exit_abort('too many warnings')
+            _info_verbose(fname, i, lines[i], _pad(lines, i))
         for rule in RULES:
             rule.reset()
         total_nr_warnings += nr_warnings

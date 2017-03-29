@@ -82,7 +82,14 @@ class TestRules(unittest.TestCase):
 
         ro = rule(r'a := "a string containing escaped \"quotes\""; b := "\"2\"";')
         self.assertEquals(ro.line, ('a := __REMOVED_STRING__;' +
-                          ' b := __REMOVED_STRING__;'))
+                                    ' b := __REMOVED_STRING__;'))
+
+        ro = rule('"a good continuation\\\n')
+        self.assertEquals(ro.msg, None)
+        self.assertEquals(ro.abort, False)
+        ro = rule('and a bad continuation\n')
+        self.assertEquals(ro.msg, 'invalid continuation of string')
+        self.assertEquals(ro.abort, True)
 
 if __name__ == '__main__':
     unittest.main()
