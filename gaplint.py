@@ -17,6 +17,7 @@ import os
 
 _VERBOSE = False
 _SILENT = True
+_VALID_EXTENSIONS = set(['g', 'g.txt', 'gi', 'gd', 'gap', 'tst', 'xml'])
 
 ################################################################################
 # Colourize strings
@@ -530,9 +531,16 @@ def _parse_args(kwargs):
             _exit_abort('no files specified or not specified in a list')
         args.files = kwargs['files']
 
+    files = []
     for fname in args.files:
         if not (os.path.exists(fname) and os.path.isfile(fname)):
-            _exit_abort(fname + ' no such file!')
+            _info_action('SKIPPING ' + fname + ': cannot open for reading')
+        elif (not fname.split('.')[-1] in _VALID_EXTENSIONS
+              and not '.'.join(fname.split('.')[-2:]) in _VALID_EXTENSIONS):
+            _info_action('IGNORING ' + fname + ': not a valid file extension')
+        else:
+            files.append(fname)
+    args.files = files
 
     return args
 
@@ -622,7 +630,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
             lines = ffile.readlines()
             ffile.close()
         except IOError:
-            _exit_abort('cannot read ' + fname)
+            _info_action('SKIPPING ' + fname + ': cannot open for reading')
 
         ext = fname.split('.')[-1]
         nr_warnings = 0
