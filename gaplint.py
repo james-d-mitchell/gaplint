@@ -287,8 +287,9 @@ class ReplaceQuotes(Rule):
                 if _is_escaped(line, -1):
                     self._consuming = True
                     ro.line = ro.line[:beg] + cont_replacement
-                elif ro.line[beg - 1:beg + 2] != "'\"'":
-                    ro.msg = 'unmatched quote!'
+                else:
+                    ro.msg = 'unmatched quote ' + self._quote
+                    ro.msg += ' in column ' + str(beg + 1)
                     ro.abort = True
                 break
             ro.line = ro.line[:beg] + replacement + ro.line[end + 1:]

@@ -77,7 +77,7 @@ class TestRules(unittest.TestCase):
         self.assertEquals(ro.line, 'x := __REMOVED_STRING__; y := 1;')
 
         ro = rule('"an unmatched quote')
-        self.assertEquals(ro.msg,'unmatched quote!')
+        self.assertEquals(ro.msg, 'unmatched quote " in column 1')
         self.assertEquals(ro.abort, True)
 
         ro = rule(r'a := "a string containing escaped \"quotes\""; b := "\"2\"";')
