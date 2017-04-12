@@ -620,8 +620,6 @@ class UnusedLVarsFunc(Rule):
             ro = self._end_function(line)
         elif self._consuming_args:
             ro = self._add_function_args(line, 0, line.find(')'))
-        elif self._consuming_lvars:
-            ro = self._add_lvars(line)
         elif self._depth >= 0:
             ro = self._remove_lvars(line)
         return ro
