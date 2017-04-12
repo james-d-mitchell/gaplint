@@ -506,6 +506,14 @@ class UnusedLVarsFunc(Rule):
                           'else', 'for', 'od', 'while', 'repeat', 'until',
                           'return', '__REMOVED_STRING__', '__REMOVED_CHAR__'}
 
+    def reset(self):
+        self._consuming_args = False
+        self._consuming_lvars = False
+        self._depth = -1
+        self._args = []
+        self._lvars = []
+
+
     def _is_function_declared(self, line):
         return self._function_p.search(line)
 
