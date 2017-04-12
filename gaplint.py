@@ -664,8 +664,8 @@ def _parse_args(kwargs):
     else:
         _VERBOSE = args.verbose
 
-    if 'max-warnings' in kwargs:
-        args.max_warnings = kwargs['max-warnings']
+    if 'max_warnings' in kwargs:
+        args.max_warnings = kwargs['max_warnings']
 
     if __name__ != '__main__':
         if not ('files' in kwargs and isinstance(kwargs['files'], list)):
