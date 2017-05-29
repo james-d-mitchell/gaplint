@@ -506,6 +506,14 @@ class UnusedLVarsFunc(Rule):
                           'else', 'for', 'od', 'while', 'repeat', 'until',
                           'return', '__REMOVED_STRING__', '__REMOVED_CHAR__'}
 
+    def reset(self):
+        self._consuming_args = False
+        self._consuming_lvars = False
+        self._depth = -1
+        self._args = []
+        self._lvars = []
+
+
     def _is_function_declared(self, line):
         return self._function_p.search(line)
 
@@ -612,8 +620,6 @@ class UnusedLVarsFunc(Rule):
             ro = self._end_function(line)
         elif self._consuming_args:
             ro = self._add_function_args(line, 0, line.find(')'))
-        elif self._consuming_lvars:
-            ro = self._add_lvars(line)
         elif self._depth >= 0:
             ro = self._remove_lvars(line)
         return ro
@@ -656,8 +662,8 @@ def _parse_args(kwargs):
     else:
         _VERBOSE = args.verbose
 
-    if 'max-warnings' in kwargs:
-        args.max_warnings = kwargs['max-warnings']
+    if 'max_warnings' in kwargs:
+        args.max_warnings = kwargs['max_warnings']
 
     if __name__ != '__main__':
         if not ('files' in kwargs and isinstance(kwargs['files'], list)):

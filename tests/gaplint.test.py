@@ -11,6 +11,8 @@ del path
 
 import gaplint
 from gaplint import run_gaplint
+sys.stdout = open(os.devnull, 'w')
+sys.stderr = open(os.devnull, 'w')
 
 class TestScript(unittest.TestCase):
     def test_dot_g_file1(self):
@@ -19,8 +21,15 @@ class TestScript(unittest.TestCase):
     def test_dot_g_file2(self):
         run_gaplint(files=['tests/test2.g'], silent=True)
 
+    def test_dot_g_file3(self):
+        with self.assertRaises(SystemExit):
+            run_gaplint(files=['tests/test3.g'], silent=True)
+
     def test_dot_tst_file(self):
         run_gaplint(files=['tests/test.tst'], silent=True)
+
+    def test_wrong_ext(self):
+        run_gaplint(files=['tests/file.wrongext'], silent=True)
 
     def test_exit_abort(self):
         with self.assertRaises(SystemExit):
@@ -48,6 +57,31 @@ class TestScript(unittest.TestCase):
 
         self.assertEquals(gaplint._orange_string('test'),
                           '\033[40;38;5;208mtest\033[0m')
+
+    def test_info_statement(self):
+        gaplint._SILENT = False
+        with self.assertRaises(AssertionError):
+            gaplint._info_statement(0)
+        gaplint._info_statement('test')
+
+    def test_info_action(self):
+        with self.assertRaises(AssertionError):
+            gaplint._info_action(0)
+        gaplint._info_action('test')
+
+    def test_info_verbose(self):
+        gaplint._SILENT, gaplint._VERBOSE = False, True
+        with self.assertRaises(AssertionError):
+            gaplint._info_verbose(0, 0, 0)
+        gaplint._info_verbose('test/tests.g', 0,'msg')
+
+    def test_info_warn(self):
+        gaplint._SILENT = False
+        with self.assertRaises(AssertionError):
+            gaplint._info_warn(0, 0, 0, 0)
+        with self.assertRaises(AssertionError):
+            gaplint._info_warn('test', 'test', 'test', 'test')
+        gaplint._info_warn('tests/test.g', 0, 'test', 0)
 
 class TestRules(unittest.TestCase):
     def test_ReplaceMultilineStrings(self):
@@ -77,6 +111,8 @@ class TestRules(unittest.TestCase):
         self.assertEquals(ro.line, 'x := __REMOVED_STRING__; y := 1;')
 
         ro = rule('"an unmatched quote')
+        assert isinstance(ro, gaplint.RuleOutput)
+
         self.assertEquals(ro.msg, 'unmatched quote " in column 1')
         self.assertEquals(ro.abort, True)
 
@@ -90,6 +126,75 @@ class TestRules(unittest.TestCase):
         ro = rule('and a bad continuation\n')
         self.assertEquals(ro.msg, 'invalid continuation of string')
         self.assertEquals(ro.abort, True)
+
+        rule._consuming=True
+        ro = rule('now on a new line')
+        assert isinstance(ro, gaplint.RuleOutput)
+        self.assertEquals(ro.msg, 'invalid continuation of string')
+        self.assertEquals(ro.abort, True)
+
+    def test_RemoveComments(self):
+        rule = gaplint.RemoveComments()
+        ro = rule(r"' before a #")
+        assert isinstance(ro, gaplint.RuleOutput)
+
+    def test_RemovePrefix(self):
+        rule = gaplint.RemovePrefix()
+        ro = rule('line does not start with gap> or >', 'tst')
+        rule._consuming = True
+        ro = rule('line has neither prefix', 'tst')
+
+    def test_UnusedLVarsFunc(self):
+        rule = gaplint.UnusedLVarsFunc()
+
+        ro = rule('function(x, x)')
+        assert isinstance(ro, gaplint.RuleOutput)
+        self.assertEquals(ro.msg[:29], 'duplicate function argument: ')
+        self.assertEquals(ro.abort, True)
+
+        rule.reset()
+        ro = rule('function(while)')
+        assert isinstance(ro, gaplint.RuleOutput)
+        self.assertEquals(ro.msg[:30],'function argument is keyword: ')
+        self.assertEquals(ro.abort, True)
+
+        rule.reset()
+        ro = rule('f := function(x)')
+        ro = rule('local y, y;')
+        assert isinstance(ro, gaplint.RuleOutput)
+        self.assertEquals(ro.msg[:26], 'name used for two locals: ')
+        self.assertEquals(ro.abort, True)
+
+        rule.reset()
+        ro = rule('f := function(x)')
+        ro = rule('local x;')
+        assert isinstance(ro, gaplint.RuleOutput)
+        self.assertEquals(ro.msg[:34],'name used for argument and local: ')
+        self.assertEquals(ro.abort, True)
+
+        rule.reset()
+        ro = rule('f := function(x)')
+        ro = rule('local while;') # doesn't mind local local
+        assert isinstance(ro, gaplint.RuleOutput)
+        self.assertEquals(ro.msg[:18], 'local is keyword: ')
+        self.assertEquals(ro.abort, True)
+
+        rule.reset()
+        ro = rule('f := function(x,')
+        ro = rule('y)')
+
+        rule.reset()
+        ro = rule('f := function(x);')
+        ro = rule('local y')
+        ro = rule(', z; end;')
+
+    def test_run_gaplint(self):
+        with self.assertRaises(SystemExit):
+            run_gaplint()
+        with self.assertRaises(SystemExit):
+            run_gaplint(files=['tests/test.g'], max_warnings=0)
+        run_gaplint(files=['non-existant-file'])
+        run_gaplint(files=['tests/test.g'], verbose=True)
 
 if __name__ == '__main__':
     unittest.main()
