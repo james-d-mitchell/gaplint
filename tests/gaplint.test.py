@@ -25,6 +25,9 @@ class TestScript(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run_gaplint(files=['tests/test3.g'], silent=True)
 
+    def test_dot_g_file4(self):
+        run_gaplint(files=['tests/test.g'], silent=True, disable='all')
+
     def test_dot_tst_file(self):
         run_gaplint(files=['tests/test.tst'], silent=True)
 
@@ -104,7 +107,7 @@ class TestRules(unittest.TestCase):
         self.assertEquals(ro.line, '__REMOVED_MULTILINE_STRING__')
 
     def test_ReplaceQuotes(self):
-        rule = gaplint.ReplaceQuotes('"', '__REMOVED_STRING__')
+        rule = gaplint.ReplaceQuotes(None, None, '"', '__REMOVED_STRING__')
 
         ro = rule('x := "A string in one line"; y := 1;')
         assert isinstance(ro, gaplint.RuleOutput)
@@ -195,6 +198,77 @@ class TestRules(unittest.TestCase):
             run_gaplint(files=['tests/test.g'], max_warnings=0)
         run_gaplint(files=['non-existant-file'])
         run_gaplint(files=['tests/test.g'], verbose=True)
+
+CONFIG_YAML_FILE = '''disable:
+- none
+- trailing-whitespace
+- remove-comments
+- M002
+indentation: 4
+max_warnings: 1000
+bananas: x'''
+
+BAD_CONFIG_YAML_FILE_1 = '''disable: 0
+indentation: 4
+max_warnings: 1000
+bananas: x'''
+
+BAD_CONFIG_YAML_FILE_2 = '''disable:
+- 0
+indentation: 4
+max_warnings: 1000
+bananas: x'''
+
+BAD_CONFIG_YAML_FILE_3 = '''disable:
+    *0
+    indettnatoatkajtkj = babnasnan
+'''
+
+
+class TestConfigYAMLFile(unittest.TestCase):
+
+    def write_config_yaml_file(self, contents=CONFIG_YAML_FILE):
+        f = file('.gaplint.yml', 'w')
+        f.write(contents)
+        f.close()
+
+    def rm_config_yaml_file(self):
+        os.remove('.gaplint.yml')
+
+    def test_with_config_file_root_dir(self):
+        self.write_config_yaml_file()
+        run_gaplint(files=['tests/test.g'], silent=True)
+        self.rm_config_yaml_file()
+
+    def test_with_bad_config_file_1(self):
+        self.write_config_yaml_file(BAD_CONFIG_YAML_FILE_1)
+        run_gaplint(files=['tests/test.g'], silent=True)
+        self.rm_config_yaml_file()
+
+    def test_with_bad_config_file_2(self):
+        self.write_config_yaml_file(BAD_CONFIG_YAML_FILE_2)
+        run_gaplint(files=['tests/test.g'], silent=True)
+        self.rm_config_yaml_file()
+
+    def test_with_bad_config_file_3(self):
+        self.write_config_yaml_file(BAD_CONFIG_YAML_FILE_3)
+        run_gaplint(files=['tests/test.g'], silent=True)
+        self.rm_config_yaml_file()
+
+    def test_with_config_file_parent_top_dir(self):
+        self.write_config_yaml_file()
+        os.chdir('tests')
+        run_gaplint(files=['test.g'], silent=True)
+        os.chdir('..')
+        self.rm_config_yaml_file()
+
+    def test_with_config_file_parent_root(self):
+        os.rename('.git', '.tmp_git')
+        run_gaplint(files=['test.g'], silent=True)
+        os.rename('.tmp_git', '.git')
+
+    def test_disable_all_file_suppressions(self):
+        run_gaplint(files=['tests/test4.g'], silent=True)
 
 if __name__ == '__main__':
     unittest.main()

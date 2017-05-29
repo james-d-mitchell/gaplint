@@ -1,11 +1,14 @@
+# gaplint: disable=a-rule, another-rule
+# gaplint: disable=another-rule2
 1 + 1+ 1; # 1 warning
 1 + 1;    # 0 warnings
 1- 1; foo := x -> x ^ 2; # 1 warning
 # duplicate-free # 0 warnings
 x := "duplicate-free"; # 0 warnings
+# gaplint: disable(nextline)=bananas, whitespace-op-plus
 x := "askjdaskjd"+"aksjdalskjd"; # 1 warning
 x := "#";  # 0 warnings
-x ^ -1;  # 0 warnings
+x ^ -1;  # 0 warnings #gaplint: disable=bananas
 x ^ - 1; # 1 warning
 x := "\"dasjlkdjsa\""; # 0 warnings
 x^ 90 # 1 warning
