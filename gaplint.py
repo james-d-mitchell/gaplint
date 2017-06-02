@@ -1,8 +1,8 @@
 #!/usr/bin/env python2
-"""
+'''
 This module provides functions for automatically checking the format of a GAP
 file according to some conventions.
-"""
+'''
 #pylint: disable=invalid-name, dangerous-default-value, too-few-public-methods,
 #pylint: disable=fixme
 
@@ -10,6 +10,8 @@ import re
 import sys
 import argparse
 import os
+import yaml
+import copy
 
 ################################################################################
 # Globals
@@ -18,6 +20,52 @@ import os
 _VERBOSE = False
 _SILENT = True
 _VALID_EXTENSIONS = set(['g', 'g.txt', 'gi', 'gd', 'gap', 'tst', 'xml'])
+
+__DEFAULT_CONFIG = {'columns': 80, 'max_warnings': 1000, 'indentation': 2,
+                    'disable': ''}
+__CONFIG = {}
+__SUPPRESSIONS = {}
+
+################################################################################
+# Configuration
+################################################################################
+
+def _read_config_file():
+    global __CONFIG, __DEFAULT_CONFIG, __SUPPRESSIONS
+
+    if not os.path.isfile('.gaplint.yml'):
+        _info_action('gaplint: using default configuration values')
+    else:
+        try:
+            config_file = open('.gaplint.yml', 'r')
+            ymldic = yaml.load(config_file)
+        except yaml.scanner.ScannerError as e:
+            _info_action('gaplint: error processing gaplint.yml, ignoring')
+            print e.value
+        except IOError:
+            _info_action('gaplint: cannot open file gaplint.yml for reading, ' 
+                         + 'ignoring')
+        except Exception:
+            sys.exit(1)
+        
+        if ymldic:
+            __CONFIG = ymldic
+            if 'disable' in __CONFIG.keys():
+                __SUPPRESSIONS = __CONFIG['disable']
+        
+def _get_config_value(key):
+    global __CONFIG, __DEFAULT_CONFIG  
+
+    config_keys = __CONFIG.keys()
+    default_keys = __DEFAULT_CONFIG.keys()
+    
+    if key in config_keys:
+        return __CONFIG[key]
+    elif key in default_keys:
+        return __DEFAULT_CONFIG[key]
+    else:
+        raise Exception('key does not exist, i.e. not a valid configuration '
+                        + 'option.')
 
 ################################################################################
 # Colourize strings
@@ -138,6 +186,9 @@ class Rule(object):
     A rule is a subclass of this class which has a __call__ method that returns
     a RuleOutput object.
     '''
+    def __init__(self, name, code):
+        self.name = name
+        self.code = code
 
     def reset(self):
         '''
@@ -158,6 +209,7 @@ class Rule(object):
         if this method returns True. The default return value is falsy.
         '''
         pass
+
 
 class RemoveComments(Rule):
     '''
@@ -194,9 +246,10 @@ class ReplaceMultilineStrings(Rule):
 
     This rule does not return any warnings.
     '''
-    def __init__(self):
+    def __init__(self, name, code):
         self._consuming = False
-
+        Rule.__init__(self, name, code)
+        
     def __call__(self, line):
         ro = RuleOutput(line)
         if self._consuming:
@@ -240,7 +293,8 @@ class ReplaceQuotes(Rule):
     This rule returns warnings if a line has an escaped quote outside a string
     or character, or if a line contains an unmatched unescaped quote.
     '''
-    def __init__(self, quote, replacement):
+    def __init__(self, name, code, quote, replacement):
+        Rule.__init__(self, name, code)
         self._quote = quote
         self._replacement = replacement
         self._cont_replacement = replacement[:-1] + 'CONTINUATION__'
@@ -336,8 +390,9 @@ class LineTooLong(Rule):
     def __call__(self, line):
         assert isinstance(line, str)
         ro = RuleOutput(line)
-        if len(line) > 81:
-            ro.msg = 'too long line (' + str(len(line) - 1) + ' / 80)'
+        cols = _get_config_value('columns')
+        if len(line) > cols:
+            ro.msg = 'too long line (%d / %d)' % (len(line) - 1, cols)
         return ro
 
 class WarnRegex(Rule):
@@ -348,11 +403,14 @@ class WarnRegex(Rule):
     '''
 
     def __init__(self,
+                 name, 
+                 code,
                  pattern,
                  warning_msg,
                  exceptions=[],
                  skip=lambda ext: None):
         #pylint: disable=bad-builtin, unnecessary-lambda, deprecated-lambda
+        Rule.__init__(self, name, code)
         assert isinstance(pattern, str)
         assert isinstance(warning_msg, str)
         assert isinstance(exceptions, list)
@@ -399,9 +457,9 @@ class WhitespaceOperator(WarnRegex):
     Instances of this class produce a warning whenever the whitespace around an
     operator is incorrect.
     '''
-    def __init__(self, op, exceptions=[]):
+    def __init__(self, name, code, op, exceptions=[]):
         #pylint: disable=bad-builtin, deprecated-lambda, unnecessary-lambda
-        WarnRegex.__init__(self, '', '')
+        WarnRegex.__init__(self, name, code, '', '')
         assert isinstance(op, str)
         assert op[0] != '(' and op[-1] != ')'
         assert exceptions is None or isinstance(exceptions, list)
@@ -425,16 +483,18 @@ class Indentation(Rule):
     this rule checks that a given line has the minimum indentation level
     required.
     '''
-    def __init__(self):
+    def __init__(self, name, code):
+        Rule.__init__(self, name, code)
+        ind = _get_config_value('indentation')
         self._expected = 0
-        self._before = [(re.compile(r'(\W|^)(elif|else)(\W|$)'), -2),
-                        (re.compile(r'(\W|^)end(\W|$)'), -2),
-                        (re.compile(r'(\W|^)(od|fi)(\W|$)'), -2),
-                        (re.compile(r'(\W|^)until(\W|$)'), -2)]
-        self._after = [(re.compile(r'(\W|^)(then|do)(\W|$)'), -2),
-                       (re.compile(r'(\W|^)(repeat|else)(\W|$)'), 2),
-                       (re.compile(r'(\W|^)function(\W|$)'), 2),
-                       (re.compile(r'(\W|^)(if|for|while|elif)(\W|$)'), 4)]
+        self._before = [(re.compile(r'(\W|^)(elif|else)(\W|$)'), -ind),
+                        (re.compile(r'(\W|^)end(\W|$)'), -ind),
+                        (re.compile(r'(\W|^)(od|fi)(\W|$)'), -ind),
+                        (re.compile(r'(\W|^)until(\W|$)'), -ind)]
+        self._after = [(re.compile(r'(\W|^)(then|do)(\W|$)'), -ind),
+                       (re.compile(r'(\W|^)(repeat|else)(\W|$)'), ind),
+                       (re.compile(r'(\W|^)function(\W|$)'), ind),
+                       (re.compile(r'(\W|^)(if|for|while|elif)(\W|$)'), 2*ind)]
         self._indent = re.compile(r'^(\s*)\S')
         self._blank = re.compile(r'^\s*$')
 
@@ -471,8 +531,8 @@ class ConsecutiveEmptyLines(WarnRegex):
     '''
     This rule checks if there are consecutive empty lines in a file.
     '''
-    def __init__(self):
-        WarnRegex.__init__(self, r'^\s*$', 'consecutive empty lines!')
+    def __init__(self, name, code):
+        WarnRegex.__init__(self, name, code, r'^\s*$', 'consecutive empty lines!')
         self._prev_line_empty = False
 
     def __call__(self, line):
@@ -492,7 +552,8 @@ class UnusedLVarsFunc(Rule):
     '''
     This rule checks if there are unused local variables in a function.
     '''
-    def __init__(self):
+    def __init__(self, name, code):
+        Rule.__init__(self, name, code)
         self._consuming_args = False
         self._consuming_lvars = False
         self._depth = -1
@@ -640,7 +701,8 @@ def _parse_args(kwargs):
 
     parser.add_argument('--max-warnings', nargs='?', type=int,
                         help='max number of warnings reported (default: 1000)')
-    parser.set_defaults(max_warnings=1000)
+    
+    parser.set_defaults(max_warnings=_get_config_value('max_warnings'))
 
     parser.add_argument('--silent', dest='silent', action='store_true',
                         help='silence all warnings (default: False)')
@@ -695,56 +757,201 @@ def _parse_args(kwargs):
 # gaplint: skip-file
 
 _remove_prefix = RemovePrefix()
-RULES = [LineTooLong(),
-         ConsecutiveEmptyLines(),
-         WarnRegex(r'^.*\s+\n$',
-                   'trailing whitespace!',
-                   [],
-                   _skip_tst_or_xml_file),
-         RemoveComments(),
-         ReplaceMultilineStrings(),
-         ReplaceQuotes('"', '__REMOVED_STRING__'),
-         ReplaceQuotes('\'', '__REMOVED_CHAR__'),
-         Indentation(),
-         WarnRegex(r',(([^,\s]+)|(\s{2,})\w)',
-                   'exactly one space required after comma'),
-         WarnRegex(r'\s,', 'no space before comma'),
-         WarnRegex(r'(\(|\[|\{)[ \t\f\v]',
-                   'no space allowed after bracket'),
-         WarnRegex(r'\s(\)|\]|\})',
+RULES = [LineTooLong('line-too-long', 'W001'),
+         ConsecutiveEmptyLines('empty-lines', 'W002'),
+         WarnRegex('trailing-whitespace', 'W003', r'^.*\s+\n$',
+                   'trailing whitespace!', [], _skip_tst_or_xml_file),
+         RemoveComments('remove-comments', 'M001'),
+         ReplaceMultilineStrings('replace-multiline-strings', 'M002'),
+         ReplaceQuotes('replace-double-quotes', 'M003', '"', 
+                       '__REMOVED_STRING__'),
+         ReplaceQuotes('replace-escaped-quotes', 'M004', r'\'', 
+                       '__REMOVED_CHAR__'),
+         Indentation('indentation', 'W004'),
+         WarnRegex('space-after-comma', 'W005',
+                    r',(([^,\s]+)|(\s{2,})\w)', 
+                    'exactly one space required after comma'),
+         WarnRegex('space-before-comma', 'W006', r'\s,', 
+                   'no space before comma'),
+         WarnRegex('space-after-bracket', 'W007', 
+                    r'(\(|\[|\{)[ \t\f\v]', 'no space allowed after bracket'),
+         WarnRegex('space-before-bracket', 'W008', r'\s(\)|\]|\})',
                    'no space allowed before bracket'),
-         WarnRegex(r';.*;',
-                   'more than one semicolon!',
-                   [],
-                   _skip_tst_or_xml_file),
-         WarnRegex(r'(\s|^)function[^\(]',
-                   'keyword function not followed by ('),
-         WarnRegex(r'(\S:=|:=(\S|\s{2,}))',
+         WarnRegex('multiple-semicolons', 'W009', r';.*;',
+                   'more than one semicolon!', [], _skip_tst_or_xml_file),
+         WarnRegex('keyword-function-(', 'W010', 
+                    r'(\s|^)function[^\(]', 
+                    'keyword function not followed by ('),
+         WarnRegex('whitespace-operator-:=', 'W011', 
+                   r'(\S:=|:=(\S|\s{2,}))', 
                    'wrong whitespace around operator :='),
-         WarnRegex(r'\t',
+         WarnRegex('tabs-in-line', 'W012', r'\t',
                    'there are tabs in this line, replace with spaces!'),
-         WarnRegex(r'function\W.*\Wlocal\W',
+         WarnRegex('keywords-function-local-same-line', 'W013', 
+                   r'function\W.*\Wlocal\W', 
                    'keywords function and local in the same line'),
-         WhitespaceOperator(r'\+', [r'^\s*\+']),
-         WhitespaceOperator(r'\*', [r'^\s*\*', r'\\\*']),
-         WhitespaceOperator(r'-',
-                            [r'-(>|\[)', r'(\^|\*|,|=|\.|>) -',
-                             r'(\(|\[)-', r'return -infinity',
-                             r'return -\d']),
-         WarnRegex(r'(return|\^|\*|,|=|\.|>) - \d',
+         WhitespaceOperator('whitespace-operator-+', 'W014',
+                            r'\+', [r'^\s*\+']),
+         WhitespaceOperator('whitespace-operator-*', 'W015', 
+                            r'\*', [r'^\s*\*', r'\\\*']),
+         WhitespaceOperator('whitespace-operator-negative', 'W016', 
+                            r'-', [r'-(>|\[)', r'(\^|\*|,|=|\.|>) -',
+                            r'(\(|\[)-', r'return -infinity', r'return -\d']),
+         WarnRegex('whitespace-operator--', 'W017', 
+                   r'(return|\^|\*|,|=|\.|>) - \d',
                    'wrong whitespace around operator -'),
-         WhitespaceOperator(r'\<', [r'^\s*\<', r'\<(\>|=)',
-                                    r'\\\<']),
-         WhitespaceOperator(r'\<='),
-         WhitespaceOperator(r'\>', [r'(-|\<)\>', r'\>=']),
-         WhitespaceOperator(r'\>='),
-         WhitespaceOperator(r'=', [r'(:|>|<)=', r'^\s*=', r'\\=']),
-         WhitespaceOperator(r'->'),
-         WhitespaceOperator(r'\/', [r'\\\/']),
-         WhitespaceOperator(r'\^', [r'^\s*\^', r'\\\^']),
-         WhitespaceOperator(r'<>', [r'^\s*<>']),
-         WhitespaceOperator(r'\.\.', [r'\.\.(\.|\))']),
-         UnusedLVarsFunc()]
+         WhitespaceOperator('whitespace-operator-less-than', 'W018', 
+                            r'\<', [r'^\s*\<', r'\<(\>|=)', r'\\\<']),
+         WhitespaceOperator('whitespace-operator-less-than-equal', 'W019', 
+                            r'\<='),
+         WhitespaceOperator('whitespace-operator-greater-than', 'W020', r'\>', 
+                            [r'(-|\<)\>', r'\>=']),
+         WhitespaceOperator('whitespace-operator-greater-than-equal', 'W021', 
+                            r'\>='),
+         WhitespaceOperator('whitespace-operator-equals', 'W022', r'=', 
+                            [r'(:|>|<)=', r'^\s*=', r'\\=']),
+         WhitespaceOperator('whitespace-mapping', 'W023', r'->'),
+         WhitespaceOperator('whitespace-forward-slash', 'W024', r'\/', 
+                            [r'\\\/']),
+         WhitespaceOperator('whitespace-caret', 'W025', r'\^', 
+                            [r'^\s*\^', r'\\\^']),
+         WhitespaceOperator('whitespace-operator-not-equal', 'W026', 
+                            r'<>', [r'^\s*<>']),
+         WhitespaceOperator('whitespace-double-dot', 'W027', r'\.\.', 
+                            [r'\.\.(\.|\))']),
+         UnusedLVarsFunc('unused-local-variables', 'W028')]
+
+_RULE_NAMES_AND_CODES = []
+for rule in RULES:
+    _RULE_NAMES_AND_CODES.append([rule.name, rule.code])
+
+
+################################################################################
+# suppressions
+################################################################################
+
+def rule_code(rule_name_or_code):
+    '''
+    Takes a rule name or code and returns the rule code.
+    '''
+    global _RULE_NAMES_AND_CODES
+    names = [x[0] for x in _RULE_NAMES_AND_CODES]
+    codes = [x[1] for x in _RULE_NAMES_AND_CODES]  
+
+    if rule_name_or_code in names:
+        return codes[names.index(rule_name_or_code)]
+    elif rule_name_or_code in codes:
+        return rule_name_or_code
+    return False
+
+def get_start_index(line): 
+    '''
+    Takes a string and if it contains '# gaplint: disable=' with characters
+    after the phrase, it returns the index of the character immediately
+    after it.
+    '''
+    n = len(line)
+    keyword = '# gaplint: disable='    
+    if keyword in line:
+        for i in range(n - 18):
+            if line[i: i + 19] == keyword:
+                if len(line) >= i + 19:
+                    return i + 19       
+    return -1
+
+def get_suppress_str(line): 
+    '''
+    Takes a string and if it contains '# gaplint: disable=', returns a string
+    excluding the phrase and all characters preceding it.
+    '''
+    line = copy.copy(line)[: -1] # get rid of \n at the end of each line
+    start = get_start_index(line)
+    if start > -1:
+        return line[start:]
+    return []
+
+def construct_True_dic(key_list): 
+    '''
+    Takes a list of values and returns a dictionary with the values as keys
+    all with value True.
+    '''
+    dic = {}
+    for key in key_list:
+        dic[key] = True
+    return dic
+
+def get_suppress_bool_dic(line):
+    '''
+    Takes a line and if it contains '# gaplint: disable=' returns a dictionary
+    with suppressed rule codes as keys, all with value Tru.
+    '''
+    global _RULE_NAMES_AND_CODES
+    names = [x[0] for x in _RULE_NAMES_AND_CODES]
+    codes = [x[1] for x in _RULE_NAMES_AND_CODES] 
+
+    mystr = get_suppress_str(line)
+    if not len(mystr):
+        return {}
+    if mystr == 'all':
+        codes = [x[1] for x in _RULE_NAMES_AND_CODES] 
+        return construct_True_dic(codes)    
+    
+    mylist1 = []
+    if ', ' in mystr:
+        mylist1 = re.split(r', ', mystr)
+    else:
+        mylist1 = [mystr]
+
+    mylist2 = []
+    for rule in mylist1:
+        if (rule in names) or (rule in codes): 
+            if not (rule_code(rule) in mylist2):
+                mylist2.append(rule_code(rule))
+
+    return construct_True_dic(mylist2)
+
+def file_suppressions(lines):
+    '''
+    Takes a file name and a list of its lines as strings. It returns a 
+    2D dictionary with line numbers as keys. Each associated value is a 
+    dictionary with the line's suppressions as keys, all with value True.
+    '''
+    fname_dic = {}
+    n = len(lines)
+    for i in range(n):
+        fname_dic[i] = get_suppress_bool_dic(lines[i])
+    return fname_dic
+
+def set_suppression_dic(files):
+    '''
+    Takes a list of files and assigns a 3D dictionary to the global variable
+    __SUPPRESSIONS. It's keys are the file names and their values are the
+    relevant 2D dictionaries described above.
+    '''
+    global __SUPPRESSIONS
+    dic = {}
+    for fname in files: # IOErrors? 
+        try:
+            ffile = open(fname, 'r')
+            lines = ffile.readlines()
+            ffile.close()
+        except IOError:
+            pass
+        dic[fname] = file_suppressions(lines)
+    __SUPPRESSIONS = dic
+
+def is_rule_suppressed(fname, linenum, code):
+    '''
+    Takes a filename, line number and rule code. Returns True if the rule is
+    suppressed for that particular line, and False otherwise.
+    '''
+    global __SUPPRESSIONS
+    if fname not in __SUPPRESSIONS.keys():
+        return False
+    elif linenum not in __SUPPRESSIONS[fname].keys():
+        return False
+    else:
+        return (code in __SUPPRESSIONS[fname][linenum].keys())
 
 ################################################################################
 # The main event
@@ -762,9 +969,13 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         silent (bool):     no output
         verbose (bool):    so much output you will not know what to do
     '''
+    _read_config_file()
+
     args = _parse_args(kwargs)
 
     total_nr_warnings = 0
+
+    set_suppression_dic(args.files)
 
     for fname in args.files:
         try:
@@ -779,7 +990,8 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         for i in xrange(len(lines)):
             lines[i] = _remove_prefix(lines[i], ext)
             for rule in RULES:
-                if not rule.skip(ext):
+                is_rule_sup = is_rule_suppressed(fname, i, rule.code)
+                if (not rule.skip(ext)) and (not is_rule_sup):
                     try:
                         ro = rule(lines[i])
                     except AssertionError:
