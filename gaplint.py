@@ -813,7 +813,7 @@ RULES = [LineTooLong('line-too-long', 'W001'),
          WhitespaceOperator('whitespace-mapping', 'W023', r'->'),
          WhitespaceOperator('whitespace-forward-slash', 'W024', r'\/', 
                             [r'\\\/']),
-         WhitespaceOperator('whitespace-caret', 'W025', r'\^', 
+         WhitespaceOperator('whitespace-^', 'W025', r'\^', 
                             [r'^\s*\^', r'\\\^']),
          WhitespaceOperator('whitespace-operator-not-equal', 'W026', 
                             r'<>', [r'^\s*<>']),
@@ -824,120 +824,80 @@ RULES = [LineTooLong('line-too-long', 'W001'),
 _RULE_NAMES_AND_CODES = []
 for rule in RULES:
     _RULE_NAMES_AND_CODES.append([rule.name, rule.code])
-
+_RULE_NAMES = [x[0] for x in _RULE_NAMES_AND_CODES]
+_RULE_CODES = [x[1] for x in _RULE_NAMES_AND_CODES]
 
 ################################################################################
 # suppressions
 ################################################################################
 
-def rule_code(rule_name_or_code):
+def rule_code(rule):
     '''
     Takes a rule name or code and returns the rule code.
     '''
-    global _RULE_NAMES_AND_CODES
-    names = [x[0] for x in _RULE_NAMES_AND_CODES]
-    codes = [x[1] for x in _RULE_NAMES_AND_CODES]  
-
-    if rule_name_or_code in names:
-        return codes[names.index(rule_name_or_code)]
-    elif rule_name_or_code in codes:
-        return rule_name_or_code
+    global _RULE_NAMES, _RULE_CODES
+    if rule in _RULE_NAMES:
+        return _RULE_CODES[_RULE_NAMES.index(rule)]
+    elif rule in _RULE_CODES:
+        return rule
     return False
 
-def get_start_index(line): 
+def make_dic(keys, vals): 
     '''
-    Takes a string and if it contains '# gaplint: disable=' with characters
-    after the phrase, it returns the index of the character immediately
-    after it.
-    '''
-    n = len(line)
-    keyword = '# gaplint: disable='    
-    if keyword in line:
-        for i in range(n - 18):
-            if line[i: i + 19] == keyword:
-                if len(line) >= i + 19:
-                    return i + 19       
-    return -1
-
-def get_suppress_str(line): 
-    '''
-    Takes a string and if it contains '# gaplint: disable=', returns a string
-    excluding the phrase and all characters preceding it.
-    '''
-    line = copy.copy(line)[: -1] # get rid of \n at the end of each line
-    start = get_start_index(line)
-    if start > -1:
-        return line[start:]
-    return []
-
-def construct_True_dic(key_list): 
-    '''
-    Takes a list of values and returns a dictionary with the values as keys
-    all with value True.
     '''
     dic = {}
-    for key in key_list:
-        dic[key] = True
+    n = len(keys)
+    for i in xrange(n):
+        dic[keys[i]] = vals[i]
     return dic
 
-def get_suppress_bool_dic(line):
+def get_line_suppressions(fname, line, linenum): 
     '''
-    Takes a line and if it contains '# gaplint: disable=' returns a dictionary
-    with suppressed rule codes as keys, all with value Tru.
     '''
-    global _RULE_NAMES_AND_CODES
-    names = [x[0] for x in _RULE_NAMES_AND_CODES]
-    codes = [x[1] for x in _RULE_NAMES_AND_CODES] 
+    global _RULE_NAMES, _RULE_CODES
+    n = len(line)
+    pattern = '#\s*gaplint:\s*disable\s*=\s*'
+    match = re.compile(pattern).search(line)
+    if match:
+        pattern = '((\w+(-\w+)*)+(-\S+){0,1})'
+        match = re.compile(pattern).findall(line[match.end():])
+        valid = []
+        for _tuple in match:
+            for rule in _tuple:
+                if rule in _RULE_NAMES + _RULE_CODES:
+                    if rule_code(rule) not in valid:
+                        valid.append(rule_code(rule))
+        if not len(valid):
+            _info_warn(fname, linenum, 
+                       'suppressions: invalid/no rule code(s) or name(s) given')
+            return {}
+        else:
+            return make_dic(valid, [True for x in xrange(len(valid))])
+    return {}
 
-    mystr = get_suppress_str(line)
-    if not len(mystr):
-        return {}
-    if mystr == 'all':
-        codes = [x[1] for x in _RULE_NAMES_AND_CODES] 
-        return construct_True_dic(codes)    
-    
-    mylist1 = []
-    if ', ' in mystr:
-        mylist1 = re.split(r', ', mystr)
-    else:
-        mylist1 = [mystr]
-
-    mylist2 = []
-    for rule in mylist1:
-        if (rule in names) or (rule in codes): 
-            if not (rule_code(rule) in mylist2):
-                mylist2.append(rule_code(rule))
-
-    return construct_True_dic(mylist2)
-
-def file_suppressions(lines):
+def suppressions_all_lines(fname, lines):
     '''
-    Takes a file name and a list of its lines as strings. It returns a 
-    2D dictionary with line numbers as keys. Each associated value is a 
-    dictionary with the line's suppressions as keys, all with value True.
     '''
-    fname_dic = {}
+    dic = {}
     n = len(lines)
     for i in range(n):
-        fname_dic[i] = get_suppress_bool_dic(lines[i])
-    return fname_dic
+        dic[i] = get_line_suppressions(fname, lines[i], i)
+    return dic
 
-def set_suppression_dic(files):
+def set_suppression_dic_global(file_list):
     '''
-    Takes a list of files and assigns a 3D dictionary to the global variable
-    __SUPPRESSIONS. It's keys are the file names and their values are the
-    relevant 2D dictionaries described above.
     '''
     global __SUPPRESSIONS
     dic = {}
-    for fname in files: # IOErrors? 
+    for fname in file_list: # IOErrors?
+        lines = []
         try:
             ffile = open(fname, 'r')
             lines = ffile.readlines()
             ffile.close()
         except IOError:
             pass
-        dic[fname] = file_suppressions(lines)
+        dic[fname] = suppressions_all_lines(fname, lines)
     __SUPPRESSIONS = dic
 
 def is_rule_suppressed(fname, linenum, code):
@@ -975,7 +935,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
 
     total_nr_warnings = 0
 
-    set_suppression_dic(args.files)
+    set_suppression_dic_global(args.files)
 
     for fname in args.files:
         try:
