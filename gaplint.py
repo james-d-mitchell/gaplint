@@ -824,7 +824,7 @@ RULES = [LineTooLong('line-too-long', 'W001'),
 _RULE_NAMES_AND_CODES = []
 for rule in RULES:
     _RULE_NAMES_AND_CODES.append([rule.name, rule.code])
-_RULE_NAMES = [x[0] for x in _RULE_NAMES_AND_CODES]
+_RULE_NAMES = [x[0] for x in _RULE_NAMES_AND_CODES] + ['all']
 _RULE_CODES = [x[1] for x in _RULE_NAMES_AND_CODES]
 
 ################################################################################
@@ -844,6 +844,7 @@ def rule_code(rule):
 
 def make_dic(keys, vals): 
     '''
+    Takes a list of keys and values and returns a dictionary.
     '''
     dic = {}
     n = len(keys)
@@ -851,52 +852,139 @@ def make_dic(keys, vals):
         dic[keys[i]] = vals[i]
     return dic
 
-def get_line_suppressions(fname, line, linenum): 
+def make_True_dic(keys):
+    '''
+    Takes a list of keys and returns a dictionary with all keys assigned the
+    value True.
+    '''
+    return make_dic(keys, [True for x in xrange(len(keys))])
+
+def filter_empty_dics(dic): # currently not used
+    '''
+    Recursive function that a dictionary of any dimension and removes entries 
+    whose value is an empty dictionary.
+    '''
+    for key in dic.keys():
+        val = dic[key]
+        if isinstance(val, dict):
+            if val == {}:
+                del dic[key]
+            filter_no_suppression_lines(val)
+
+def is_valid_rule(rule):
+    '''
+    Takes a rule and confirms its validity.
+    '''
+    global _RULE_NAMES, _CODE_NAMES
+    if rule in _RULE_NAMES + _RULE_CODES:
+        return True
+    return False
+
+def get_global_suppressions(lines): #works
+    '''
+    Takes a list of lines and returns and returns a dictionary with rules 
+    globally suppressed as entries, all assigned the value True.
+    '''
+    global _RULE_CODES
+    pattern1 = re.compile('\s*#')
+    pattern2 = re.compile('\s*$')
+    pattern3 = re.compile('\s*#\s*gaplint:\s*disable\s*=\s*')
+    global_supps = []
+    i = 0
+    n = len(lines)
+    myline = lines[0]
+
+    while  re.match(pattern1, myline) or re.match(pattern2, myline):
+        match = re.search(pattern3, myline)
+        if match:
+            pattern4 = re.compile('((\w+(-\w+)*)+(-\S+){0,1})')
+            supps = pattern4.findall(myline[match.end():])
+            for tup in supps:
+                for rule in tup:
+                    if is_valid_rule(rule):                        
+                        if rule == 'all':
+                            return make_True_dic(_RULE_CODES)
+                        code = rule_code(rule)
+                        if not code in global_supps:
+                            global_supps.append(code)        
+        if i < n - 1:
+            i += 1
+            myline = lines[i]            
+    return make_True_dic(global_supps)
+
+def add_global_supps_to_line_supps(line_rules_dic, global_rules_dic):
+    '''
+    Takes two dictionaries with rules as keys, assigned the value True. The 
+    first contains the suppressions for a line, the second the global 
+    suppressions for the file containing the line. The function checks that
+    the global suppressions are present in the line suppressions, and if not,
+    adds them.
+    '''
+    l_rules = line_rules_dic.keys()
+    g_rules = global_rules_dic.keys()
+    for g_rule in g_rules:
+        if not g_rule in l_rules:
+            line_rules_dic[g_rule] = True
+
+def get_line_suppressions(fname, line, linenum, global_dic):
     '''
     '''
     global _RULE_NAMES, _RULE_CODES
     n = len(line)
     pattern = '#\s*gaplint:\s*disable\s*=\s*'
     match = re.compile(pattern).search(line)
+
     if match:
-        pattern = '((\w+(-\w+)*)+(-\S+){0,1})'
+        pattern = '((\w+(-\w+)*)+(-\S+){0,1})' 
         match = re.compile(pattern).findall(line[match.end():])
         valid = []
+
         for _tuple in match:
             for rule in _tuple:
                 if rule in _RULE_NAMES + _RULE_CODES:
+                    if rule == 'all':
+                        d = make_dic(_RULE_CODES, 
+                                     [True for x in xrange(len(_RULE_CODES))])
+                        return d                
                     if rule_code(rule) not in valid:
                         valid.append(rule_code(rule))
+
         if not len(valid):
             _info_warn(fname, linenum, 
                        'suppressions: invalid/no rule code(s) or name(s) given')
             return {}
         else:
-            return make_dic(valid, [True for x in xrange(len(valid))])
+            dic = make_True_dic(valid)
+            add_global_suppressions(dic, global_dic)
+            return dic
     return {}
 
 def suppressions_all_lines(fname, lines):
     '''
     '''
     dic = {}
+    global_dic = get_global_suppressions(lines)
     n = len(lines)
     for i in range(n):
-        dic[i] = get_line_suppressions(fname, lines[i], i)
+        line_supps_dic = get_line_suppressions(fname, lines[i], i, global_dic)
+        if len(line_supps_dic.keys()) > 0:
+            dic[i] = line_supps_dic
+    #print dic
     return dic
 
-def set_suppression_dic_global(file_list):
+def set_suppression_dic_all_files(file_list):
     '''
     '''
     global __SUPPRESSIONS
     dic = {}
-    for fname in file_list: # IOErrors?
+    for fname in file_list: 
         lines = []
         try:
             ffile = open(fname, 'r')
             lines = ffile.readlines()
             ffile.close()
-        except IOError:
-            pass
+        except IOError: # _info_action thrown in main method
+            pass        
         dic[fname] = suppressions_all_lines(fname, lines)
     __SUPPRESSIONS = dic
 
@@ -935,7 +1023,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
 
     total_nr_warnings = 0
 
-    set_suppression_dic_global(args.files)
+    set_suppression_dic_all_files(args.files)
 
     for fname in args.files:
         try:
