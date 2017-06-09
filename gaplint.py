@@ -930,32 +930,38 @@ def get_line_suppressions(fname, line, linenum):
     Takes a filename, string and line number. Returns a dictionary whose keys
     are the suppressed rules for the line, all assigned value True. If the
     suppression keywords are present, but no/invalid rules follow, a warning
-    is thrown and an empty dictionary is returned.
+    is thrown and an empty dictionary is returned. ## list returned ##
     '''
     global _RULE_NAMES, _RULE_CODES
     n = len(line)
-    pattern = '#\s*gaplint:\s*disable\s*=\s*'
-    match = re.compile(pattern).search(line)
-    if match:
-        pattern = '((\w+(-\w+)*)+(-\S+){0,1})' 
-        match = re.compile(pattern).findall(line[match.end():])
+    pattern1 = re.compile('#\s*gaplint:\s*disable\s*=\s*')
+    pattern2 = re.compile('#\s* gaplint:\s*disable\(nextline\)=\s*')
+    match1 = pattern1.search(line)
+    match2 = pattern2.search(line)
+    is_nextline = False
+    if match1 or match2:
+        pattern = re.compile('((\w+(-\w+)*)+(-\S+){0,1})') 
+        if match2:
+            is_nextline = True        
+            match = pattern.findall(line[match2.end():])
+        else:
+            match = pattern.findall(line[match1.end():])
         valid = []
         for _tuple in match:
             for rule in _tuple:
                 if rule in _RULE_NAMES + _RULE_CODES:
                     if rule == 'all':
-                        d = make_dic(_RULE_CODES, 
-                                     [True for x in xrange(len(_RULE_CODES))])
-                        return d                
-                    if rule_code(rule) not in valid:
-                        valid.append(rule_code(rule))
+                        return [is_nextline, make_True_dic(_RULE_CODES)]
+                    code = rule_code(rule)
+                    if code not in valid:
+                        valid.append(code)
         if not len(valid):
             _info_warn(fname, linenum, 
                        'suppressions: invalid/no rule code(s) or name(s) given')
-            return {}
+            return [is_nextline, {}]
         else:
-            return make_True_dic(valid)
-    return {}
+            return [is_nextline, make_True_dic(valid)]
+    return [is_nextline, {}]
 
 def suppressions_all_lines(fname, lines):
     '''
@@ -969,9 +975,13 @@ def suppressions_all_lines(fname, lines):
     n = len(lines)
     for i in range(n):
         line_supp_dic = get_line_suppressions(fname, lines[i], i)
-        add_global_supps_to_line_supps(line_supp_dic, global_supp_dic)
-        if len(line_supp_dic.keys()) > 0:
-            dic[i] = line_supp_dic
+        add_global_supps_to_line_supps(line_supp_dic[1], global_supp_dic)
+        if len(line_supp_dic[1].keys()) > 0:
+            if line_supp_dic[0]:
+                i += 1
+            if not i in dic.keys():
+                dic[i] = line_supp_dic[1]
+    print dic
     return dic
 
 def set_suppression_dic_all_files(file_list):
