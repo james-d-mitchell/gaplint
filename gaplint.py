@@ -928,9 +928,11 @@ def add_global_supps_to_line_supps(line_supp_dic, global_supp_dic):
 def get_line_suppressions(fname, line, linenum):
     '''
     Takes a filename, string and line number. Returns a dictionary whose keys
-    are the suppressed rules for the line, all assigned value True. If the
-    suppression keywords are present, but no/invalid rules follow, a warning
-    is thrown and an empty dictionary is returned. ## list returned ##
+    are the suppressed rules for the line, all assigned value True, and a 
+    boolean value True if the rules are to be applied to the next line and
+    False if not. If the suppression keywords are present, but no/invalid rules 
+    follow, a warning is thrown. A list is returned. The first element of which 
+    is the bool, the second the dictionary.
     '''
     global _RULE_NAMES, _RULE_CODES
     n = len(line)
@@ -981,7 +983,10 @@ def suppressions_all_lines(fname, lines):
                 i += 1
             if not i in dic.keys():
                 dic[i] = line_supp_dic[1]
-    print dic
+            else:
+                 for rule in line_supp_dic[1].keys():
+                    if not rule in dic[i].keys():
+                        dic[i][rule] = True
     return dic
 
 def set_suppression_dic_all_files(file_list):
