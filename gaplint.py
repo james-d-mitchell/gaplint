@@ -981,12 +981,12 @@ def suppressions_all_lines(fname, lines):
         if len(line_supp_dic[1].keys()) > 0:
             if line_supp_dic[0]:
                 i += 1
-            if not i in dic.keys():
-                dic[i] = line_supp_dic[1]
-            else:
-                 for rule in line_supp_dic[1].keys():
-                    if not rule in dic[i].keys():
-                        dic[i][rule] = True
+            #if not i in dic.keys():
+            #    dic[i] = line_supp_dic[1]
+            #else:
+             for rule in line_supp_dic[1].keys():
+                if not rule in dic[i].keys():
+                    dic[i][rule] = True
     return dic
 
 def set_suppression_dic_all_files(file_list):
