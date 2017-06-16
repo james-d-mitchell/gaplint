@@ -3,7 +3,7 @@
 ---
 Gaplint automatically checks the format of a GAP file according to some conventions, *rules*. It prints the nature and location of instances of incorrect formatting as well as correcting others.
 
-### Rules
+### 1. Rules
 ---
 *Rules that report formatting errors (codes begin with 'W' for 'warning'):*
 
@@ -47,7 +47,48 @@ Gaplint automatically checks the format of a GAP file according to some conventi
 | M003 | replace-double-quotes | Removes everything between non-escaped <double-quote>s in a line to avoid matching linting issues where they do not apply. A line's length and content is altered so if either of these is important for another rule, that rule should be run before this one. |
 | M004 | replace-escaped-quotes | Removes escaped <quote>s in a line to avoid matching linting issues where they do not apply. A line's length and content is altered so if either of these is important for another rule, that rule should be run before this one. |
 
-### Disabling Rules for a Line or File
+### 2. Configuration
+---
+Certain rules can be configured by the user, for example the the maximum number of characters permitted per line. 
+
+***Configuration keywords:*** 
+* `columns=<integer>` (max number of characters per line)
+* `max-warnings=<integer>` (max number of warnings before gaplint aborts)
+* `indentation=<integer>` (indentation of each successive nested statement)
+* `disable=<name/code>, <name/code>, ...` (rules can be suppressed using their name or code)
+
+***The configuration hierarchy from top to bottom is as follows:***
+
+1. *Contents of global variable* `__CONFIG` *in* `gaplint.py`:
+    These preferences will be applied to all documents linted until they are again altered.
+
+    ```python
+    # Globals
+    __CONFIG = {} # this is the user configuration dictionary
+    ```
+    
+    For example, if we want 100 characters per line instead of the default 80, an indentation of 4 spaces instead of the default 2, and to supress rules concerning consecutive empty lines and unused local variables we add to `__CONFIG` as follows:
+    
+    ```python
+    # Globals
+    __CONFIG = {'columns': 100, 'indentation': 4, 'disable': [W002, W028]}
+    # note we could also have disabled the rules by name
+    ```
+    
+
+2. *Configuration options entered via the command line when running gaplint:*
+    These preferences will be applied for a single run of gaplint only (though multiple files may be linted in this run). To configure gaplint to be run on file1, file 2, ..., with preferences as in the example above we input the following into the command line:
+
+    ```
+    $ ./gaplint.py --columns=100 --indentation=4 --disable=[W002, W028] <file1.g> <file2.g> ...
+    ```
+    
+    
+3. Preferences in configuration script `.gaplint.yml`
+4. File/line rule suppressions in user's GAP file (see *Disabling Rules for a Line or File*).
+5. Default configuration (no user action required)
+
+### 3. Disabling Rules for a Line or File
 ---
 Any of the rules in the tables above can be suppressed for a specific line or for a whole file:
 
@@ -62,7 +103,7 @@ Any of the rules in the tables above can be suppressed for a specific line or fo
     ```
     # gaplint: disable(nextline)=<name_or_code>, <name_or_code>, ...
     ```
-* If rules have been suppressed for a given line using both the in-line and *nextline* options, the union of the two rule sets will be suppressed.
+* If rules have been suppressed for a given line using both the in-line and *nextline* options, the union of the two rule sets given for suppression will be disabled for that line.
 
 * To suppress rules for a whole file the following must be included before any code is written (i.e. either as the first line of a GAP file, or preceded by any combination of only whitespace, empty lines and comments):
 
@@ -70,19 +111,7 @@ Any of the rules in the tables above can be suppressed for a specific line or fo
     # gaplint: disable=<name_or_code>, <name_or_code>, ...
     ```
 
-### Rule Configuration
----
-Certain rules can be configured by the user. The configuration hierarchy from top to bottom is as follows:
 
-1. Contents of global variable `__CONFIG` in `gaplint.py`
-2. Configuration options entered via the command line
-3. Preferences in configuration script `.gaplint.yml`
-4. File/line rule suppressions in user's GAP file.
-5. Default configuration (no user action required)
-
-
-detail config options and file and hierarchy 
-all default
 
 
 
