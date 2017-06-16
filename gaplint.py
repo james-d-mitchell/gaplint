@@ -30,14 +30,52 @@ __SUPPRESSIONS = {}
 # Configuration
 ################################################################################
 
-def _read_config_file():
-    global __CONFIG, __DEFAULT_CONFIG, __SUPPRESSIONS
+def _get_config_yml_path(dir_path, prev_dir_path): 
+    '''
+    A function that recursively searches for the gaplint.yml configuration 
+    script. It begins in the user's cwd. If the .yml is not found, the 
+    funtion is called recursively on the parent directory. The recursive calls 
+    are repeated until either the .yml script is found or a .git directory is
+    reached. If no configuration script is found None is returned. Otherwise
+    the path to the .yml is returned.
+    '''
+    entries = os.listdir(dir_path) # initialise list of entries in cwd 
 
-    if not os.path.isfile('.gaplint.yml'):
-        _info_action('gaplint: using default configuration values')
-    else:
+    # Base case A:
+    # If the config script is found in entries, its path is returned.
+    if '.gaplint.yml' in entries: 
+        return dir_path + '/.gaplint.yml'
+
+    # Base case B:
+    # If we reach a directory without the config script, but containing a
+    # directory .git we terminate the search and return None.
+    if '.git' in entries:
+        return None    
+
+    # Recursive case A:
+    # If there are directories that have not been searched in the list entries, 
+    # we make the recursive call on them.
+    for e in entries:
+        e_path = dir_path + '/' + e
+        if os.path.isdir(e_path) and e_path != prev_dir_path:
+            nextdir_path = os.getcwd() + '/' + e
+            return _get_config_yml_path(nextdir_path)
+
+    # Recursive case B:
+    # If no child-directories contain the config script, we make the recursive
+    # call on the parent directory.
+    nextdir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
+    return _get_config_yml_path(next_dir_path, dir_path)
+
+def _read_config_file():
+    '''
+
+    '''
+    global __CONFIG, __DEFAULT_CONFIG, __SUPPRESSIONS
+    ymlpath = _get_config_yml_path(os.getcwd(), '')    
+    if not ymlpath == None:
         try:
-            config_file = open('.gaplint.yml', 'r')
+            config_file = open(ymlpath, 'r')
             ymldic = yaml.load(config_file)
         except yaml.scanner.ScannerError as e:
             _info_action('gaplint: error processing gaplint.yml, ignoring')
@@ -46,12 +84,14 @@ def _read_config_file():
             _info_action('gaplint: cannot open file gaplint.yml for reading, ' 
                          + 'ignoring')
         except Exception:
-            sys.exit(1)
-        
+            sys.exit(1)        
         if ymldic:
             __CONFIG = ymldic
             if 'disable' in __CONFIG.keys():
                 __SUPPRESSIONS = __CONFIG['disable']
+    else:
+        _info_action('gaplint: using default configuration values')
+
         
 def _get_config_value(key):
     global __CONFIG, __DEFAULT_CONFIG  
@@ -831,6 +871,8 @@ _RULE_CODES = [x[1] for x in _RULE_NAMES_AND_CODES]
 # suppressions
 ################################################################################
 
+## comments
+
 def rule_code(rule):
     '''
     Takes a rule name or code and returns the rule code.
@@ -880,24 +922,27 @@ def is_valid_rule(rule):
         return True
     return False
 
+# unpack tuple functiom get_line_suppressions(line)
+
 def get_global_suppressions(lines):
     '''
     Takes a list of lines and returns a dictionary with globally suppressed 
     rules as entries, all assigned the value True.
     '''
     global _RULE_CODES
-    pattern1 = re.compile('\s*#')
-    pattern2 = re.compile('\s*$')
+    pattern1 = re.compile('^\s*($|#)')
+    #pattern2 = re.compile('^\s*$')
     pattern3 = re.compile('\s*#\s*gaplint:\s*disable\s*=\s*')
     global_supps = []
     i = 0
     n = len(lines)
-    myline = lines[0]
-    while  re.match(pattern1, myline) or re.match(pattern2, myline):
-        match = re.search(pattern3, myline)
+    line = lines[0]
+    # while pattern.search(line)
+    while  re.match(pattern1, line):# or re.match(pattern2, myline):
+        match = re.search(pattern3, line)
         if match:
             pattern4 = re.compile('((\w+(-\w+)*)+(-\S+){0,1})')
-            supps = pattern4.findall(myline[match.end():])
+            supps = pattern4.findall(line[match.end():])
             for tup in supps:
                 for rule in tup:
                     if is_valid_rule(rule):                        
@@ -908,8 +953,10 @@ def get_global_suppressions(lines):
                             global_supps.append(code)        
         if i < n - 1:
             i += 1
-            myline = lines[i]
+            line = lines[i]
     return make_True_dic(global_supps)
+
+# remove add_global_supps
 
 def add_global_supps_to_line_supps(line_supp_dic, global_supp_dic):
     '''
@@ -1014,6 +1061,7 @@ def is_rule_suppressed(fname, linenum, code):
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     '''
+    # func that runs gets supps after initialising if necessary.
     global __SUPPRESSIONS
     if fname not in __SUPPRESSIONS.keys():
         return False
@@ -1043,7 +1091,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
     args = _parse_args(kwargs)
 
     total_nr_warnings = 0
-
+# move to is rule suppressed func
     set_suppression_dic_all_files(args.files)
 
     for fname in args.files:
