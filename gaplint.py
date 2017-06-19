@@ -22,7 +22,7 @@ _SILENT = True
 _VALID_EXTENSIONS = set(['g', 'g.txt', 'gi', 'gd', 'gap', 'tst', 'xml'])
 
 __DEFAULT_CONFIG = {'columns': 80, 'max_warnings': 1000, 'indentation': 2,
-                    'disable': []}
+                    'disable': {}}
 __CONFIG = {}
 __SUPPRESSIONS = {}
 __GLOBAL_SUPPRESSIONS = {}
@@ -76,34 +76,36 @@ def _read_config_file():
     '''
 
     '''
-    global __CONFIG, __DEFAULT_CONFIG, __SUPPRESSIONS
-    ymlpath = _get_config_yml_path(os.getcwd()) # obtain path to config script
-    if ymlpath != None:
+    global __CONFIG
+    ymlpath = _get_config_yml_path(os.getcwd()) 
+    ymldic = {}    
+    if ymlpath != None:        
         try:
             config_file = open(ymlpath, 'r')
-            ymldic = yaml.load(config_file)
+            ymldic = yaml.load(config_file)        
         except yaml.scanner.ScannerError as e:
-            _info_action('gaplint: error processing .gaplint.yml')
-            sys.exit(1)
+            _info_action('gaplint: error processing .gaplint.yml, '
+                         + 'using default configuration values')
+            return        
         except IOError:
-            _info_action('gaplint: cannot open file .gaplint.yml.')
-            sys.exit(1)
+            _info_action('gaplint: cannot open file .gaplint.yml, '
+                         + 'using default configuration values')
+            return        
         except Exception:
-            sys.exit(1)
+            _info_action('gaplint: there is a problem with .gaplint.yml, '
+                         + 'using default configuration values')
+            return
         __CONFIG = ymldic
-        if 'disable' in __CONFIG.keys():
-            for rule in __CONFIG['disable']
-            __SUPPRESSIONS = __CONFIG['disable']
     else:
-        _info_action('gaplint: using default configuration values')
-
+        _info_action('gaplint: config file .gaplint.yml not found, '
+                     + 'using default configuration values')
         
 def _get_config_value(key):
-    global __CONFIG, __DEFAULT_CONFIG  
-
+    '''
+    '''
+    global __CONFIG, __DEFAULT_CONFIG
     config_keys = __CONFIG.keys()
-    default_keys = __DEFAULT_CONFIG.keys()
-    
+    default_keys = __DEFAULT_CONFIG.keys()    
     if key in config_keys:
         return __CONFIG[key]
     elif key in default_keys:
@@ -744,10 +746,21 @@ def _parse_args(kwargs):
     if __name__ == '__main__':
         parser.add_argument('files', nargs='+', help='the files to lint')
 
-    parser.add_argument('--max-warnings', nargs='?', type=int,
-                        help='max number of warnings reported (default: 1000)')
-    
+    parser.add_argument('--max_warnings', nargs='?', type=int,
+                        help='max number of warnings reported (default: 1000)')    
     parser.set_defaults(max_warnings=_get_config_value('max_warnings'))
+
+    parser.add_argument('--columns', nargs='?', type=int, 
+                        help='max number of characters per line (default: 80)')
+    parser.set_defaults(columns=_get_config_value('columns'))
+
+    parser.add_argument('--disable', nargs='?', type=list, help='gaplint rules '
+                        + '(name or code) to disable (default: [])')
+    parser.set_defaults(disable=_get_config_value('disable'))
+
+    parser.add_argument('--indentation', nargs='?', type=int,
+                        help='indentation of nested statements (default: 2)')
+    parser.add_default(indentation=_get_config_value('indentation'))
 
     parser.add_argument('--silent', dest='silent', action='store_true',
                         help='silence all warnings (default: False)')
@@ -771,6 +784,12 @@ def _parse_args(kwargs):
 
     if 'max_warnings' in kwargs:
         args.max_warnings = kwargs['max_warnings']
+    if 'columns' in kwargs:
+        args.columns = kwargs['columns']
+    if 'disable' in kwargs:
+        args.disable = kwargs['disable']
+    if 'indentation' in kwargs:
+        args.indentation = kwargs['indentation'] 
 
     if __name__ != '__main__':
         if not ('files' in kwargs and isinstance(kwargs['files'], list)):
@@ -1029,31 +1048,44 @@ def set_suppression_dics_all_files(file_list):
             ffile = open(fname, 'r')
             lines = ffile.readlines()
             ffile.close()
-        except IOError: # error handling okay? (IO exceptions thrown in main)
+        except IOError: ### not sure how exceptions should be handled here
             pass
-
+        
         supps_all_lines = __suppressions_all_lines(fname, lines)
-        global_supps = __get_global_supps_dic(fname, lines)
-        if len(all_line_supps) > 0:
+        global_supps = __get_global_supps_dic(fname, lines)        
+        if len(all_line_supps.keys()) > 0:
             dic[fname] = __suppressions_all_lines(fname, lines)
-        if len(global_supps) > 0:
+        if len(global_supps.keys()) > 0:
             G_dic[fname] = __get_global_supps_dic(fname, lines)
+
     __SUPPRESSIONS = dic
     __GLOBAL_SUPPRESSIONS = G_dic
 
-def is_rule_suppressed(fname, linenum, code):
+def is_rule_suppressed(fname, linenum, code, args):
     '''
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     '''
     # func that runs gets supps after initialising if necessary.
-    global __SUPPRESSIONS
-    if fname not in __SUPPRESSIONS.keys():
-        return False
-    elif linenum not in __SUPPRESSIONS[fname].keys():
-        return False
+    global __CONFIG, __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS
+    
+    #####if 'disable' in __CONFIG.keys() and code :
+
+    elif code in args.disable:
+        return True
+
+    if code in __CONFIG['disable'].keys():
+        return True
+        
+
+    if fname not in __SUPPRESSIONS.keys() + __GLOBAL_SUPPRESSIONS.keys():
+        return False    
+    elif (linenum not in __SUPPRESSIONS[fname].keys()
+          + __GLOBAL_SUPPRESSIONS[fname].keys()):
+        return False    
     else:
-        return (code in __SUPPRESSIONS[fname][linenum].keys())
+        return (code in __SUPPRESSIONS[fname][linenum].keys()
+                + __GLOBAL_SUPPRESSIONS[fname][linenum].keys())
 
 ################################################################################
 # The main event
@@ -1076,7 +1108,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
     args = _parse_args(kwargs)
 
     total_nr_warnings = 0
-# move to is rule suppressed func
+    # move to is rule suppressed func
     set_suppression_dic_all_files(args.files)
 
     for fname in args.files:
