@@ -22,73 +22,78 @@ _SILENT = True
 _VALID_EXTENSIONS = set(['g', 'g.txt', 'gi', 'gd', 'gap', 'tst', 'xml'])
 
 __DEFAULT_CONFIG = {'columns': 80, 'max_warnings': 1000, 'indentation': 2,
-                    'disable': ''}
+                    'disable': []}
 __CONFIG = {}
 __SUPPRESSIONS = {}
+__GLOBAL_SUPPRESSIONS = {}
 
 ################################################################################
 # Configuration
 ################################################################################
 
-def _get_config_yml_path(dir_path, prev_dir_path): 
+def _get_config_yml_path(dir_path, checked_dirs=[]): 
     '''
-    A function that recursively searches for the gaplint.yml configuration 
-    script. It begins in the user's cwd. If the .yml is not found, the 
-    funtion is called recursively on the parent directory. The recursive calls 
-    are repeated until either the .yml script is found or a .git directory is
-    reached. If no configuration script is found None is returned. Otherwise
-    the path to the .yml is returned.
+    Takes the path of a directory to search and a list of those already
+    searched. The function recursively searches for the gaplint.yml config
+    script. It begins the search at dir_path. If the .yml is not found, the
+    funtion is called recursively on any child directories, and if it is still
+    not found, the parent directory. The recursive calls are repeated until
+    either the .yml script is found or a .git directory is reached. If no
+    configuration script is found None is returned. Otherwise the path to the
+    .yml is returned.
     '''
-    entries = os.listdir(dir_path) # initialise list of entries in cwd 
+    # We keep track of directories we have already searched with the list,
+    # checked_dirs. This way we do not search directories a second time as we 
+    # backtrack.
+    checked_dirs.append(dir_path)
+    # initialise list of entries in the directory we are currently searching
+    entries = os.listdir(dir_path)
 
-    # Base case A:
-    # If the config script is found in entries, its path is returned.
+    # Base case A: if the config script is found in entries, we return the path.
     if '.gaplint.yml' in entries: 
         return dir_path + '/.gaplint.yml'
 
-    # Base case B:
-    # If we reach a directory without the config script, but containing a
-    # directory .git we terminate the search and return None.
-    if '.git' in entries:
-        return None    
+    # Base case B: if a directory .git is found in entries or if the directory 
+    # we are currently searching is called .git, we return None.
+    if '.git' in entries or dir_path == '.git':
+        return None
 
-    # Recursive case A:
-    # If there are directories that have not been searched in the list entries, 
-    # we make the recursive call on them.
+    # Recursive case A: if there are directories in entries that have not  been 
+    # searched, we make the recursive call on each.
     for e in entries:
         e_path = dir_path + '/' + e
-        if os.path.isdir(e_path) and e_path != prev_dir_path:
-            nextdir_path = os.getcwd() + '/' + e
-            return _get_config_yml_path(nextdir_path)
+        if os.path.isdir(e_path) and e_path not in checked_dirs:
+            return _get_config_yml_path(e_path, checked_dirs)
 
-    # Recursive case B:
-    # If no child-directories contain the config script, we make the recursive
-    # call on the parent directory.
-    nextdir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
-    return _get_config_yml_path(next_dir_path, dir_path)
+    # Recursive case B: if no child-directories contain the config script, we 
+    # make the recursive call on the nearest unsearched parent directory.
+    pardir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
+    while pardir_path in checked_dirs:
+        pardir_path = os.path.abspath(os.path.join(pardir_path, os.pardir))
+    return _get_config_yml_path(pardir_path, checked_dirs)
 
 def _read_config_file():
     '''
 
     '''
     global __CONFIG, __DEFAULT_CONFIG, __SUPPRESSIONS
-    ymlpath = _get_config_yml_path(os.getcwd(), '')    
-    if not ymlpath == None:
+    ymlpath = _get_config_yml_path(os.getcwd()) # obtain path to config script
+    if ymlpath != None:
         try:
             config_file = open(ymlpath, 'r')
             ymldic = yaml.load(config_file)
         except yaml.scanner.ScannerError as e:
-            _info_action('gaplint: error processing gaplint.yml, ignoring')
-            print e.value
+            _info_action('gaplint: error processing .gaplint.yml')
+            sys.exit(1)
         except IOError:
-            _info_action('gaplint: cannot open file gaplint.yml for reading, ' 
-                         + 'ignoring')
+            _info_action('gaplint: cannot open file .gaplint.yml.')
+            sys.exit(1)
         except Exception:
-            sys.exit(1)        
-        if ymldic:
-            __CONFIG = ymldic
-            if 'disable' in __CONFIG.keys():
-                __SUPPRESSIONS = __CONFIG['disable']
+            sys.exit(1)
+        __CONFIG = ymldic
+        if 'disable' in __CONFIG.keys():
+            for rule in __CONFIG['disable']
+            __SUPPRESSIONS = __CONFIG['disable']
     else:
         _info_action('gaplint: using default configuration values')
 
@@ -873,10 +878,11 @@ _RULE_CODES = [x[1] for x in _RULE_NAMES_AND_CODES]
 
 ## comments
 
-def rule_code(rule):
+def __rule_code(rule): # make public?
     '''
     Takes a rule name or code and returns the rule code.
     '''
+    assert isinstance(rule, str)
     global _RULE_NAMES, _RULE_CODES
     if rule in _RULE_NAMES:
         return _RULE_CODES[_RULE_NAMES.index(rule)]
@@ -884,7 +890,7 @@ def rule_code(rule):
         return rule
     return False
 
-def make_dic(keys, vals): 
+def __make_dic(keys, vals): 
     '''
     Takes a list of keys and values and returns a dictionary.
     '''
@@ -894,26 +900,7 @@ def make_dic(keys, vals):
         dic[keys[i]] = vals[i]
     return dic
 
-def make_True_dic(keys):
-    '''
-    Takes a list of keys and returns a dictionary with all keys assigned the
-    value True.
-    '''
-    return make_dic(keys, [True for x in xrange(len(keys))])
-
-def filter_empty_dics(dic): # currently not used - maybe useful later
-    '''
-    Recursive function that takes a dictionary of any dimension and removes 
-    entries whose value is an empty dictionary.
-    '''
-    for key in dic.keys():
-        val = dic[key]
-        if isinstance(val, dict):
-            if val == {}:
-                del dic[key]
-            filter_no_suppression_lines(val)
-
-def is_valid_rule(rule):
+def __is_valid_rule(rule): # make public?
     '''
     Takes a rule and confirms its validity, returning a bool.
     '''
@@ -922,57 +909,57 @@ def is_valid_rule(rule):
         return True
     return False
 
-# unpack tuple functiom get_line_suppressions(line)
+def __unpack_tuple_list(tuplist):
+    '''
+    Takes a list of tuples and searches their contents for rules. Returns a 
+    list of rules found.
+    '''
+    assert isinstance(tuplist, list)
+    assert all(isinstance(tup, tuple) for tup in tuplist)
+    
+    global _RULE_NAMES, _RULE_CODES
+    supp_codes = []
+    for tup in tuplist:
+        for rule in tup:
+            if rule == 'all'
+                return _RULE_CODES
+            if __is_valid_rule(rule):
+                code = rule_code(rule)
+                if not code in supp_codes:
+                    supp_codes.append(code)
+    return supp_codes
 
-def get_global_suppressions(lines):
+def __get_global_suppressions_dic(fname, lines):
     '''
     Takes a list of lines and returns a dictionary with globally suppressed 
     rules as entries, all assigned the value True.
     '''
     global _RULE_CODES
     pattern1 = re.compile('^\s*($|#)')
-    #pattern2 = re.compile('^\s*$')
-    pattern3 = re.compile('\s*#\s*gaplint:\s*disable\s*=\s*')
-    global_supps = []
+    pattern2 = re.compile('\s*#\s*gaplint:\s*disable\s*=\s*')
+    pattern3 = re.compile('((\w+(-\w+)*)+(-\S+){0,1})')
+    n = len(lines)    
     i = 0
-    n = len(lines)
     line = lines[0]
-    # while pattern.search(line)
-    while  re.match(pattern1, line):# or re.match(pattern2, myline):
-        match = re.search(pattern3, line)
+    G_supps = {}
+
+    while re.search(pattern1, line) and i < n:
+        match = re.search(pattern2, line)
         if match:
-            pattern4 = re.compile('((\w+(-\w+)*)+(-\S+){0,1})')
-            supps = pattern4.findall(line[match.end():])
-            for tup in supps:
-                for rule in tup:
-                    if is_valid_rule(rule):                        
-                        if rule == 'all':
-                            return make_True_dic(_RULE_CODES)
-                        code = rule_code(rule)
-                        if not code in global_supps:
-                            global_supps.append(code)        
-        if i < n - 1:
-            i += 1
-            line = lines[i]
-    return make_True_dic(global_supps)
+            match = pattern3.findall(line[match.end():])
+            supp_codes = __unpack_tuple_list(match)
+            if not len(supp_codes):
+                _info_warn(fname, i, 'global suppressions: invalid/no rule '
+                           + 'code(s) or name(s) given')
+            if supp_codes == _RULE_CODES: # i.e. rule = 'all'
+                return make_dic(_RULE_CODES, [True for x in _RULE_CODES])
+            for code in supp_codes:
+                if not code in G_supps.keys():
+                    G_supps[code] = True
+        i += 1
+        line = lines[i]
 
-# remove add_global_supps
-
-def add_global_supps_to_line_supps(line_supp_dic, global_supp_dic):
-    '''
-    Takes two dictionaries with rules as keys, assigned the value True. The 
-    first contains the suppressions for a line, the second the global 
-    suppressions for the file containing the line. The function checks that
-    the global suppressions are present in the line suppressions, and if not,
-    adds them.
-    '''
-    l_supps = line_supp_dic.keys()
-    g_supps = global_supp_dic.keys()
-    for g_supp in g_supps:
-        if not g_supp in l_supps:
-            line_supp_dic[g_supp] = True
-
-def get_line_suppressions(fname, line, linenum):
+def __get_line_suppressions(fname, line, linenum):
     '''
     Takes a filename, string and line number. Returns a dictionary whose keys
     are the suppressed rules for the line, all assigned value True, and a 
@@ -995,56 +982,47 @@ def get_line_suppressions(fname, line, linenum):
             match = pattern.findall(line[match2.end():])
         else:
             match = pattern.findall(line[match1.end():])
-        valid = []
-        for _tuple in match:
-            for rule in _tuple:
-                if rule in _RULE_NAMES + _RULE_CODES:
-                    if rule == 'all':
-                        return [is_nextline, make_True_dic(_RULE_CODES)]
-                    code = rule_code(rule)
-                    if code not in valid:
-                        valid.append(code)
+        valid = __unpack_tuple_list(match)
         if not len(valid):
             _info_warn(fname, linenum, 
                        'suppressions: invalid/no rule code(s) or name(s) given')
             return [is_nextline, {}]
         else:
-            return [is_nextline, make_True_dic(valid)]
+            return [is_nextline, make_dic(valid, [True for x in valid])]
     return [is_nextline, {}]
 
-def suppressions_all_lines(fname, lines):
+def __suppressions_all_lines_dic(fname, lines):
     '''
     Takes a filename and a list the lines of the file as strings. Returns a
-    2D dictionary whose keys are the numbers of lines with rule suppressions.
+    2D dictionary whose keys are the indices of lines with rule suppressions.
     Their values are dictionaries whose keys are the rules suppressed in the
     lines, all assigned value True. This includes global suppressions.
     '''
     dic = {}
-    global_supp_dic = get_global_suppressions(lines)
     n = len(lines)
     for i in range(n):
-        line_supp_dic = get_line_suppressions(fname, lines[i], i)
-        add_global_supps_to_line_supps(line_supp_dic[1], global_supp_dic)
+        line_supp_dic = __get_line_suppressions(fname, lines[i], i)
         if len(line_supp_dic[1].keys()) > 0:
-            if line_supp_dic[0]:
-                i += 1
+            if line_supp_dic[0]: 
+                i += 1 # if nextline increment line index by 1
             if not i in dic.keys():
-                dic[i] = line_supp_dic[1]
+                dic[i] = line_supp_dic[1] 
             else:
                  for rule in line_supp_dic[1].keys():
                     if not rule in dic[i].keys():
                         dic[i][rule] = True
     return dic
 
-def set_suppression_dic_all_files(file_list):
+def set_suppression_dics_all_files(file_list):
     '''
     Takes a list of files to be linted. Assigns a 3D dictionary to the global 
     variable __SUPPRESSIONS. It's keys are the files to be linted. Each
     corresponding value is a 2D dictionary containing the suppressions for each
     line (that returned by suppressions_all_lines above)
     '''
-    global __SUPPRESSIONS
+    global __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS
     dic = {}
+    G_dic = {}
     for fname in file_list: 
         lines = []
         try:
@@ -1052,9 +1030,16 @@ def set_suppression_dic_all_files(file_list):
             lines = ffile.readlines()
             ffile.close()
         except IOError: # error handling okay? (IO exceptions thrown in main)
-            pass        
-        dic[fname] = suppressions_all_lines(fname, lines)
+            pass
+
+        supps_all_lines = __suppressions_all_lines(fname, lines)
+        global_supps = __get_global_supps_dic(fname, lines)
+        if len(all_line_supps) > 0:
+            dic[fname] = __suppressions_all_lines(fname, lines)
+        if len(global_supps) > 0:
+            G_dic[fname] = __get_global_supps_dic(fname, lines)
     __SUPPRESSIONS = dic
+    __GLOBAL_SUPPRESSIONS = G_dic
 
 def is_rule_suppressed(fname, linenum, code):
     '''
