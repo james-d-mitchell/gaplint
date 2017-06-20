@@ -31,7 +31,7 @@ __GLOBAL_SUPPRESSIONS = {}
 # Configuration
 ################################################################################
 
-def _get_config_yml_path(dir_path, checked_dirs=[]): 
+def __get_config_yml_path(dir_path, checked_dirs=[]): 
     '''
     Takes the path of a directory to search and a list of those already
     searched. The function recursively searches for the gaplint.yml config
@@ -42,6 +42,7 @@ def _get_config_yml_path(dir_path, checked_dirs=[]):
     configuration script is found None is returned. Otherwise the path to the
     .yml is returned.
     '''
+    assert os.path.isdir(dir_path)
     # We keep track of directories we have already searched with the list,
     # checked_dirs. This way we do not search directories a second time as we 
     # backtrack.
@@ -63,20 +64,20 @@ def _get_config_yml_path(dir_path, checked_dirs=[]):
     for e in entries:
         e_path = dir_path + '/' + e
         if os.path.isdir(e_path) and e_path not in checked_dirs:
-            return _get_config_yml_path(e_path, checked_dirs)
+            return __get_config_yml_path(e_path, checked_dirs)
 
     # Recursive case B: if no child-directories contain the config script, we 
     # make the recursive call on the nearest unsearched parent directory.
     pardir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
     while pardir_path in checked_dirs:
         pardir_path = os.path.abspath(os.path.join(pardir_path, os.pardir))
-    return _get_config_yml_path(pardir_path, checked_dirs)
+    return __get_config_yml_path(pardir_path, checked_dirs)
 
-def _get_config_ymldic():
+def __get_config_yml_dic():
     '''
 
     '''
-    ymlpath = _get_config_yml_path(os.getcwd()) 
+    ymlpath = __get_config_yml_path(os.getcwd()) 
     ymldic = {}    
     if ymlpath != None:        
         try:
@@ -96,11 +97,20 @@ def _get_config_ymldic():
         _info_action('gaplint: config file .gaplint.yml not found, '
                      + 'using default configuration values')
     return {}
-'''
+
 def __set_config_dic(args):
+    assert isinstance(args, object)
     global __CONFIG, __DEFAULT_CONFIG
-    temp_config = _get_config_ymldic()
-    # superceded by command line options if there are any
+
+    # yml config 3rd in hierarchy
+    temp_config = __get_config_yml_dic()
+    supps = temp_config['disable']
+    codes = []
+    for rule in supps:
+        codes.append(__rule_code(rule))
+    temp_config['disable'] = codes
+
+    # superceded by command line options, 2nd in hierarchy
     if not args.max_warnings == __DEFAULT_CONFIG['max_warnings']:
         temp_config['max_warnings'] = args.max_warnings
     if not args.columns ==  __DEFAULT_CONFIG['columns']:
@@ -108,16 +118,16 @@ def __set_config_dic(args):
     if not args.disable ==  __DEFAULT_CONFIG['disable']:
         temp = []
         for rule in args.disable:
-            rule = _rule_code(rule)
-        suppdic = make_dic(args.disable, [True for a in args.disable])
+            temp.append(__rule_code(rule))
+        suppdic = make_dic(temp, [True for a in args.disable])
         temp_config['disable'] = suppdic
     if not args.indentation ==  __DEFAULT_CONFIG['indentation']:
         temp_config['indentation'] = args.indentation
-    # superceded by hard-coded options in global variable __CONFIG
+    
+    # superceded by contents of global variable __CONFIG, top of hierarchy
     for option in temp_config.keys():
         if not option in __CONFIG.keys():
             __CONFIG[option] = temp_config[option]
-'''
 
 def _get_config_val(key):
     '''
@@ -914,9 +924,7 @@ _RULE_CODES = [x[1] for x in _RULE_NAMES_AND_CODES]
 # suppressions
 ################################################################################
 
-## comments
-
-def _rule_code(rule): # make public?
+def __rule_code(rule): 
     '''
     Takes a rule name or code and returns the rule code.
     '''
@@ -932,13 +940,14 @@ def __make_dic(keys, vals):
     '''
     Takes a list of keys and values and returns a dictionary.
     '''
+    assert (isinstance(keys, list) and isinstance(vals, list)
+            and len(keys) == len(vals))
     dic = {}
-    n = len(keys)
-    for i in xrange(n):
+    for i in xrange(len(keys)):
         dic[keys[i]] = vals[i]
     return dic
 
-def __is_valid_rule(rule): # make public?
+def __is_valid_rule(rule):
     '''
     Takes a rule and confirms its validity, returning a bool.
     '''
@@ -952,11 +961,11 @@ def __unpack_tuple_list(tuplist):
     Takes a list of tuples and searches their contents for rules. Returns a 
     list of rules found.
     '''
-    assert isinstance(tuplist, list)
-    assert all(isinstance(tup, tuple) for tup in tuplist)
-    
+    assert (isinstance(tuplist, list)
+            and all(isinstance(tup, tuple) for tup in tuplist))    
     global _RULE_NAMES, _RULE_CODES
     supp_codes = []
+
     for tup in tuplist:
         for rule in tup:
             if rule == 'all':
@@ -965,6 +974,7 @@ def __unpack_tuple_list(tuplist):
                 code = rule_code(rule)
                 if not code in supp_codes:
                     supp_codes.append(code)
+
     return supp_codes
 
 def __get_global_suppdic(fname, lines):
@@ -972,6 +982,9 @@ def __get_global_suppdic(fname, lines):
     Takes a list of lines and returns a dictionary with globally suppressed 
     rules as entries, all assigned the value True.
     '''
+    assert (isinstance(fname, str) and isinstance(lines, list)
+            and all(isinstance(x, str) for x in lines))
+    
     global _RULE_CODES
     pattern1 = re.compile('^\s*($|#)')
     pattern2 = re.compile('\s*#\s*gaplint:\s*disable\s*=\s*')
@@ -1007,6 +1020,9 @@ def __get_line_suppressions(fname, line, linenum):
     follow, a warning is thrown. A list is returned. The first element of which 
     is the bool, the second the dictionary.
     '''
+    assert (all(isinstance(x, str) for x in [fname, line])
+            and isinstance(linenum, int))
+
     global _RULE_NAMES, _RULE_CODES
     n = len(line)
     pattern1 = re.compile('#\s*gaplint:\s*disable\s*=\s*')
@@ -1037,6 +1053,9 @@ def __get_lines_suppdic(fname, lines):
     Their values are dictionaries whose keys are the rules suppressed in the
     lines, all assigned value True. This includes global suppressions.
     '''
+    assert (isinstance(fname, str) and isinstance(lines, list)
+            and all(isinstance(x, str) for x in lines))
+
     dic = {}
     n = len(lines)
     for i in range(n):
@@ -1059,6 +1078,9 @@ def __set_suppression_dics(file_list):
     corresponding value is a 2D dictionary containing the suppressions for each
     line (that returned by suppressions_all_lines above)
     '''
+    assert (isinstance(file_list, list)
+            and all(isinstance(x, str) for x in file_list))
+    
     global __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS
     dic = {}
     G_dic = {}
@@ -1081,53 +1103,44 @@ def __set_suppression_dics(file_list):
     __SUPPRESSIONS = dic
     __GLOBAL_SUPPRESSIONS = G_dic
 
-def is_rule_suppressed(fname, linenum, code):
+def __is_rule_suppressed(fname, linenum, code):
+    '''
+    '''
+    assert (all(isinstance(x, str) for x in [fname, code]) 
+            and isinstance(linenum, int))
+
+    global __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS
+    if fname in __GLOBAL_SUPPRESSIONS.keys():
+        return code in __GLOBAL_SUPPRESSIONS[fname].keys()
+    if fname in __SUPPRESSIONS.keys():
+        if linenum in __SUPPRESSIONS[fname].keys():
+            return code in __SUPPRESSIONS[fname][linenum].keys()
+    return False
+
+
+################################################################################
+# user preferences
+################################################################################
+
+def __is_rule_disabled_suppressed(fname, linenum, code):
     '''
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     '''
-    global __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS, __CONFIG
-    if code in __CONFIG['disable']:
-        return True
+    assert (all(isinstance(x, str) for x in [fname, code]) 
+            and isinstance(linenum, int))
+
     if code in _get_config_val('disable'):
-        return True        
-    if fname in __GLOBAL_SUPPRESSIONS.keys() or fname in __SUPPRESSIONS.keys():
-        if linenum in __SUPPRESSIONS[fname].keys():
-            return (code in __GLOBAL_SUPPRESSIONS[fname].keys()
-                    or code in __SUPPRESSIONS[fname][linenum].keys())
-        return code in __GLOBAL_SUPPRESSIONS[fname].keys()
+        return True       
+    if __is_rule_suppressed(fname, linenum, code):
+        return True
     return False
 
-def __set_config_dic(args):
-    global __CONFIG, __DEFAULT_CONFIG
-    temp_config = _get_config_ymldic()
-
-    supps = temp_config['disable']
-    for rule in supps:
-        rule = _rule_code(rule)
-    temp_config['disable'] = supps
-
-
-
-    # superceded by command line options if there are any
-    if not args.max_warnings == __DEFAULT_CONFIG['max_warnings']:
-        temp_config['max_warnings'] = args.max_warnings
-    if not args.columns ==  __DEFAULT_CONFIG['columns']:
-        temp_config['columns'] = args.columns
-    if not args.disable ==  __DEFAULT_CONFIG['disable']:
-        temp = []
-        for rule in args.disable:
-            temp.append(_rule_code(rule))
-        suppdic = make_dic(temp, [True for a in args.disable])
-        temp_config['disable'] = suppdic
-    if not args.indentation ==  __DEFAULT_CONFIG['indentation']:
-        temp_config['indentation'] = args.indentation
-
-    print temp_config
-    # superceded by hard-coded options in global variable __CONFIG
-    for option in temp_config.keys():
-        if not option in __CONFIG.keys():
-            __CONFIG[option] = temp_config[option]
+def __load_user_preferences(args):
+    assert isinstance(args, object)
+    __set_config_dic(args)
+    __set_suppression_dics(args.files)
+    return
 
 ################################################################################
 # The main event
@@ -1149,13 +1162,10 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         verbose (bool):       so much output you will not know what to do
     '''    
     args = _parse_args(kwargs)
-    
-    __set_config_dic(args)
-    print __CONFIG
+
+    __load_user_preferences(args)
 
     total_nr_warnings = 0
-    # move to is rule suppressed func
-    __set_suppression_dics(args.files)
 
     for fname in args.files:
         try:
@@ -1170,8 +1180,8 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         for i in xrange(len(lines)):
             lines[i] = _remove_prefix(lines[i], ext)
             for rule in RULES:
-                is_rule_sup = is_rule_suppressed(fname, i, rule.code)
-                if (not rule.skip(ext)) and (not is_rule_sup):
+                is_rule_dis = __is_rule_disabled_suppressed(fname, i, rule.code)
+                if (not rule.skip(ext)) and (not is_rule_dis):
                     try:
                         ro = rule(lines[i])
                     except AssertionError:
