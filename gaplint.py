@@ -72,11 +72,10 @@ def _get_config_yml_path(dir_path, checked_dirs=[]):
         pardir_path = os.path.abspath(os.path.join(pardir_path, os.pardir))
     return _get_config_yml_path(pardir_path, checked_dirs)
 
-def _read_config_file():
+def _get_config_ymldic():
     '''
 
     '''
-    global __CONFIG
     ymlpath = _get_config_yml_path(os.getcwd()) 
     ymldic = {}    
     if ymlpath != None:        
@@ -85,24 +84,42 @@ def _read_config_file():
             ymldic = yaml.load(config_file)        
         except yaml.scanner.ScannerError as e:
             _info_action('gaplint: error processing .gaplint.yml, '
-                         + 'using default configuration values')
-            return        
+                         + 'using default configuration values')        
         except IOError:
             _info_action('gaplint: cannot open file .gaplint.yml, '
                          + 'using default configuration values')
-            return        
         except Exception:
             _info_action('gaplint: there is a problem with .gaplint.yml, '
                          + 'using default configuration values')
-            return
-        __CONFIG = ymldic
+        return ymldic
     else:
         _info_action('gaplint: config file .gaplint.yml not found, '
                      + 'using default configuration values')
+    return {}
+'''
+def __set_config_dic(args):
+    global __CONFIG, __DEFAULT_CONFIG
+    temp_config = _get_config_ymldic()
+    # superceded by command line options if there are any
+    if not args.max_warnings == __DEFAULT_CONFIG['max_warnings']:
+        temp_config['max_warnings'] = args.max_warnings
+    if not args.columns ==  __DEFAULT_CONFIG['columns']:
+        temp_config['columns'] = args.columns
+    if not args.disable ==  __DEFAULT_CONFIG['disable']:
+        temp = []
+        for rule in args.disable:
+            rule = _rule_code(rule)
+        suppdic = make_dic(args.disable, [True for a in args.disable])
+        temp_config['disable'] = suppdic
+    if not args.indentation ==  __DEFAULT_CONFIG['indentation']:
+        temp_config['indentation'] = args.indentation
+    # superceded by hard-coded options in global variable __CONFIG
+    for option in temp_config.keys():
+        if not option in __CONFIG.keys():
+            __CONFIG[option] = temp_config[option]
+'''
 
-#### incorporate command line prefs
-        
-def _get_config_value(key):
+def _get_config_val(key):
     '''
     '''
     global __CONFIG, __DEFAULT_CONFIG
@@ -439,7 +456,7 @@ class LineTooLong(Rule):
     def __call__(self, line):
         assert isinstance(line, str)
         ro = RuleOutput(line)
-        cols = _get_config_value('columns')
+        cols = _get_config_val('columns')
         if len(line) > cols:
             ro.msg = 'too long line (%d / %d)' % (len(line) - 1, cols)
         return ro
@@ -534,7 +551,7 @@ class Indentation(Rule):
     '''
     def __init__(self, name, code):
         Rule.__init__(self, name, code)
-        ind = _get_config_value('indentation')
+        ind = _get_config_val('indentation')
         self._expected = 0
         self._before = [(re.compile(r'(\W|^)(elif|else)(\W|$)'), -ind),
                         (re.compile(r'(\W|^)end(\W|$)'), -ind),
@@ -750,19 +767,19 @@ def _parse_args(kwargs):
 
     parser.add_argument('--max_warnings', nargs='?', type=int,
                         help='max number of warnings reported (default: 1000)')    
-    parser.set_defaults(max_warnings=_get_config_value('max_warnings'))
+    parser.set_defaults(max_warnings=_get_config_val('max_warnings'))
 
     parser.add_argument('--columns', nargs='?', type=int, 
                         help='max number of characters per line (default: 80)')
-    parser.set_defaults(columns=_get_config_value('columns'))
+    parser.set_defaults(columns=_get_config_val('columns'))
 
     parser.add_argument('--disable', nargs='?', type=list, help='gaplint rules '
                         + '(name or code) to disable (default: [])')
-    parser.set_defaults(disable=_get_config_value('disable'))
+    parser.set_defaults(disable=_get_config_val('disable'))
 
     parser.add_argument('--indentation', nargs='?', type=int,
                         help='indentation of nested statements (default: 2)')
-    parser.set_defaults(indentation=_get_config_value('indentation'))
+    parser.set_defaults(indentation=_get_config_val('indentation'))
 
     parser.add_argument('--silent', dest='silent', action='store_true',
                         help='silence all warnings (default: False)')
@@ -899,7 +916,7 @@ _RULE_CODES = [x[1] for x in _RULE_NAMES_AND_CODES]
 
 ## comments
 
-def __rule_code(rule): # make public?
+def _rule_code(rule): # make public?
     '''
     Takes a rule name or code and returns the rule code.
     '''
@@ -1069,8 +1086,10 @@ def is_rule_suppressed(fname, linenum, code):
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     '''
-    global __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS
-    if code in _get_config_value('disable'):
+    global __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS, __CONFIG
+    if code in __CONFIG['disable']:
+        return True
+    if code in _get_config_val('disable'):
         return True        
     if fname in __GLOBAL_SUPPRESSIONS.keys() or fname in __SUPPRESSIONS.keys():
         if linenum in __SUPPRESSIONS[fname].keys():
@@ -1078,6 +1097,37 @@ def is_rule_suppressed(fname, linenum, code):
                     or code in __SUPPRESSIONS[fname][linenum].keys())
         return code in __GLOBAL_SUPPRESSIONS[fname].keys()
     return False
+
+def __set_config_dic(args):
+    global __CONFIG, __DEFAULT_CONFIG
+    temp_config = _get_config_ymldic()
+
+    supps = temp_config['disable']
+    for rule in supps:
+        rule = _rule_code(rule)
+    temp_config['disable'] = supps
+
+
+
+    # superceded by command line options if there are any
+    if not args.max_warnings == __DEFAULT_CONFIG['max_warnings']:
+        temp_config['max_warnings'] = args.max_warnings
+    if not args.columns ==  __DEFAULT_CONFIG['columns']:
+        temp_config['columns'] = args.columns
+    if not args.disable ==  __DEFAULT_CONFIG['disable']:
+        temp = []
+        for rule in args.disable:
+            temp.append(_rule_code(rule))
+        suppdic = make_dic(temp, [True for a in args.disable])
+        temp_config['disable'] = suppdic
+    if not args.indentation ==  __DEFAULT_CONFIG['indentation']:
+        temp_config['indentation'] = args.indentation
+
+    print temp_config
+    # superceded by hard-coded options in global variable __CONFIG
+    for option in temp_config.keys():
+        if not option in __CONFIG.keys():
+            __CONFIG[option] = temp_config[option]
 
 ################################################################################
 # The main event
@@ -1089,15 +1139,19 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
     the keywords argument files.
 
     Keyword Args:
-        files (list):      a list of the filenames (str) of the files to lint
-        maxwarnings (int): the maximum number of warnings before giving up
-                           (defaults to 1000)
-        silent (bool):     no output
-        verbose (bool):    so much output you will not know what to do
-    '''
-    _read_config_file()
-
+        files (list):         a list of the filenames (str) of the files to lint
+        max_warnings (int):   the maximum number of warnings before giving up
+                              (defaults to 1000)
+        columns (int):        max characters per line (defaults to 80)
+        indentation (int):    indentation of nested statements (defaults to 2)
+        disable (list):       rules (names/codes) to suppress (defaults to [])
+        silent (bool):        no output
+        verbose (bool):       so much output you will not know what to do
+    '''    
     args = _parse_args(kwargs)
+    
+    __set_config_dic(args)
+    print __CONFIG
 
     total_nr_warnings = 0
     # move to is rule suppressed func
