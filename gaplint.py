@@ -22,7 +22,7 @@ _SILENT = True
 _VALID_EXTENSIONS = set(['g', 'g.txt', 'gi', 'gd', 'gap', 'tst', 'xml'])
 
 __DEFAULT_CONFIG = {'columns': 80, 'max_warnings': 1000, 'indentation': 2,
-                    'disable': {}}
+                    'disable': []}
 __CONFIG = {}
 __SUPPRESSIONS = {}
 __GLOBAL_SUPPRESSIONS = {}
@@ -99,6 +99,8 @@ def _read_config_file():
     else:
         _info_action('gaplint: config file .gaplint.yml not found, '
                      + 'using default configuration values')
+
+#### incorporate command line prefs
         
 def _get_config_value(key):
     '''
@@ -760,7 +762,7 @@ def _parse_args(kwargs):
 
     parser.add_argument('--indentation', nargs='?', type=int,
                         help='indentation of nested statements (default: 2)')
-    parser.add_default(indentation=_get_config_value('indentation'))
+    parser.set_defaults(indentation=_get_config_value('indentation'))
 
     parser.add_argument('--silent', dest='silent', action='store_true',
                         help='silence all warnings (default: False)')
@@ -843,43 +845,43 @@ RULES = [LineTooLong('line-too-long', 'W001'),
                    'no space allowed before bracket'),
          WarnRegex('multiple-semicolons', 'W009', r';.*;',
                    'more than one semicolon!', [], _skip_tst_or_xml_file),
-         WarnRegex('keyword-function-(', 'W010', 
+         WarnRegex('keyword-function', 'W010', 
                     r'(\s|^)function[^\(]', 
                     'keyword function not followed by ('),
-         WarnRegex('whitespace-operator-:=', 'W011', 
+         WarnRegex('whitespace-op-colon-equals', 'W011', 
                    r'(\S:=|:=(\S|\s{2,}))', 
                    'wrong whitespace around operator :='),
-         WarnRegex('tabs-in-line', 'W012', r'\t',
+         WarnRegex('tabs', 'W012', r'\t',
                    'there are tabs in this line, replace with spaces!'),
-         WarnRegex('keywords-function-local-same-line', 'W013', 
+         WarnRegex('function-local-same-line', 'W013', 
                    r'function\W.*\Wlocal\W', 
                    'keywords function and local in the same line'),
-         WhitespaceOperator('whitespace-operator-+', 'W014',
+         WhitespaceOperator('whitespace-op-plus', 'W014',
                             r'\+', [r'^\s*\+']),
-         WhitespaceOperator('whitespace-operator-*', 'W015', 
+         WhitespaceOperator('whitespace-op-multiply', 'W015', 
                             r'\*', [r'^\s*\*', r'\\\*']),
-         WhitespaceOperator('whitespace-operator-negative', 'W016', 
+         WhitespaceOperator('whitespace-op-negative', 'W016', 
                             r'-', [r'-(>|\[)', r'(\^|\*|,|=|\.|>) -',
                             r'(\(|\[)-', r'return -infinity', r'return -\d']),
-         WarnRegex('whitespace-operator--', 'W017', 
+         WarnRegex('whitespace-op-minus', 'W017', 
                    r'(return|\^|\*|,|=|\.|>) - \d',
                    'wrong whitespace around operator -'),
-         WhitespaceOperator('whitespace-operator-less-than', 'W018', 
+         WhitespaceOperator('whitespace-op-less-than', 'W018', 
                             r'\<', [r'^\s*\<', r'\<(\>|=)', r'\\\<']),
-         WhitespaceOperator('whitespace-operator-less-than-equal', 'W019', 
+         WhitespaceOperator('whitespace-op-less-equal', 'W019', 
                             r'\<='),
-         WhitespaceOperator('whitespace-operator-greater-than', 'W020', r'\>', 
+         WhitespaceOperator('whitespace-op-more-than', 'W020', r'\>', 
                             [r'(-|\<)\>', r'\>=']),
-         WhitespaceOperator('whitespace-operator-greater-than-equal', 'W021', 
+         WhitespaceOperator('whitespace-op-more-equal', 'W021', 
                             r'\>='),
-         WhitespaceOperator('whitespace-operator-equals', 'W022', r'=', 
+         WhitespaceOperator('whitespace-op-equals', 'W022', r'=', 
                             [r'(:|>|<)=', r'^\s*=', r'\\=']),
-         WhitespaceOperator('whitespace-mapping', 'W023', r'->'),
-         WhitespaceOperator('whitespace-forward-slash', 'W024', r'\/', 
+         WhitespaceOperator('whitespace-op-mapping', 'W023', r'->'),
+         WhitespaceOperator('whitespace-op-divide', 'W024', r'\/', 
                             [r'\\\/']),
-         WhitespaceOperator('whitespace-^', 'W025', r'\^', 
+         WhitespaceOperator('whitespace-op-power', 'W025', r'\^', 
                             [r'^\s*\^', r'\\\^']),
-         WhitespaceOperator('whitespace-operator-not-equal', 'W026', 
+         WhitespaceOperator('whitespace-op-not-equal', 'W026', 
                             r'<>', [r'^\s*<>']),
          WhitespaceOperator('whitespace-double-dot', 'W027', r'\.\.', 
                             [r'\.\.(\.|\))']),
@@ -888,7 +890,7 @@ RULES = [LineTooLong('line-too-long', 'W001'),
 _RULE_NAMES_AND_CODES = []
 for rule in RULES:
     _RULE_NAMES_AND_CODES.append([rule.name, rule.code])
-_RULE_NAMES = [x[0] for x in _RULE_NAMES_AND_CODES] + ['all']
+_RULE_NAMES = [x[0] for x in _RULE_NAMES_AND_CODES]
 _RULE_CODES = [x[1] for x in _RULE_NAMES_AND_CODES]
 
 ################################################################################
@@ -940,7 +942,7 @@ def __unpack_tuple_list(tuplist):
     supp_codes = []
     for tup in tuplist:
         for rule in tup:
-            if rule == 'all'
+            if rule == 'all':
                 return _RULE_CODES
             if __is_valid_rule(rule):
                 code = rule_code(rule)
@@ -948,7 +950,7 @@ def __unpack_tuple_list(tuplist):
                     supp_codes.append(code)
     return supp_codes
 
-def __get_global_suppressions_dic(fname, lines):
+def __get_global_suppdic(fname, lines):
     '''
     Takes a list of lines and returns a dictionary with globally suppressed 
     rules as entries, all assigned the value True.
@@ -960,7 +962,7 @@ def __get_global_suppressions_dic(fname, lines):
     n = len(lines)    
     i = 0
     line = lines[0]
-    G_supps = {}
+    G_suppdic = {}
 
     while re.search(pattern1, line) and i < n:
         match = re.search(pattern2, line)
@@ -973,10 +975,11 @@ def __get_global_suppressions_dic(fname, lines):
             if supp_codes == _RULE_CODES: # i.e. rule = 'all'
                 return make_dic(_RULE_CODES, [True for x in _RULE_CODES])
             for code in supp_codes:
-                if not code in G_supps.keys():
-                    G_supps[code] = True
+                if not code in G_suppdic.keys():
+                    G_suppdic[code] = True
         i += 1
         line = lines[i]
+    return G_suppdic
 
 def __get_line_suppressions(fname, line, linenum):
     '''
@@ -1010,7 +1013,7 @@ def __get_line_suppressions(fname, line, linenum):
             return [is_nextline, make_dic(valid, [True for x in valid])]
     return [is_nextline, {}]
 
-def __suppressions_all_lines_dic(fname, lines):
+def __get_lines_suppdic(fname, lines):
     '''
     Takes a filename and a list the lines of the file as strings. Returns a
     2D dictionary whose keys are the indices of lines with rule suppressions.
@@ -1032,7 +1035,7 @@ def __suppressions_all_lines_dic(fname, lines):
                         dic[i][rule] = True
     return dic
 
-def set_suppression_dics_all_files(file_list):
+def __set_suppression_dics(file_list):
     '''
     Takes a list of files to be linted. Assigns a 3D dictionary to the global 
     variable __SUPPRESSIONS. It's keys are the files to be linted. Each
@@ -1051,41 +1054,30 @@ def set_suppression_dics_all_files(file_list):
         except IOError: ### not sure how exceptions should be handled here
             pass
         
-        supps_all_lines = __suppressions_all_lines(fname, lines)
-        global_supps = __get_global_supps_dic(fname, lines)        
-        if len(all_line_supps.keys()) > 0:
-            dic[fname] = __suppressions_all_lines(fname, lines)
-        if len(global_supps.keys()) > 0:
-            G_dic[fname] = __get_global_supps_dic(fname, lines)
+        lines_suppdic = __get_lines_suppdic(fname, lines)
+        global_suppdic = __get_global_suppdic(fname, lines)        
+        if len(lines_suppdic.keys()) > 0:
+            dic[fname] = __get_lines_suppdic(fname, lines)
+        if len(global_suppdic.keys()) > 0:
+            G_dic[fname] = __get_global_suppdic(fname, lines)
 
     __SUPPRESSIONS = dic
     __GLOBAL_SUPPRESSIONS = G_dic
 
-def is_rule_suppressed(fname, linenum, code, args):
+def is_rule_suppressed(fname, linenum, code):
     '''
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     '''
-    # func that runs gets supps after initialising if necessary.
-    global __CONFIG, __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS
-    
-    #####if 'disable' in __CONFIG.keys() and code :
-
-    elif code in args.disable:
-        return True
-
-    if code in __CONFIG['disable'].keys():
-        return True
-        
-
-    if fname not in __SUPPRESSIONS.keys() + __GLOBAL_SUPPRESSIONS.keys():
-        return False    
-    elif (linenum not in __SUPPRESSIONS[fname].keys()
-          + __GLOBAL_SUPPRESSIONS[fname].keys()):
-        return False    
-    else:
-        return (code in __SUPPRESSIONS[fname][linenum].keys()
-                + __GLOBAL_SUPPRESSIONS[fname][linenum].keys())
+    global __SUPPRESSIONS, __GLOBAL_SUPPRESSIONS
+    if code in _get_config_value('disable'):
+        return True        
+    if fname in __GLOBAL_SUPPRESSIONS.keys() or fname in __SUPPRESSIONS.keys():
+        if linenum in __SUPPRESSIONS[fname].keys():
+            return (code in __GLOBAL_SUPPRESSIONS[fname].keys()
+                    or code in __SUPPRESSIONS[fname][linenum].keys())
+        return code in __GLOBAL_SUPPRESSIONS[fname].keys()
+    return False
 
 ################################################################################
 # The main event
@@ -1109,7 +1101,7 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
 
     total_nr_warnings = 0
     # move to is rule suppressed func
-    set_suppression_dic_all_files(args.files)
+    __set_suppression_dics(args.files)
 
     for fname in args.files:
         try:
