@@ -75,7 +75,10 @@ def __get_config_yml_path(dir_path, checked_dirs=[]):
 
 def __get_config_yml_dic():
     '''
-
+    Takes no argument. Attempts to open the config file at the path returned by
+    __get_yml_config_path. If the attempt is successful the yaml config file is
+    read yielding a dictionary which is returned. If the file cannot be opened,
+    an empty dictionary is returned.
     '''
     ymlpath = __get_config_yml_path(os.getcwd()) 
     ymldic = {}    
@@ -98,29 +101,42 @@ def __get_config_yml_dic():
                      + 'using default configuration values')
     return {}
 
+def __get_code_list(rule_list):
+    '''
+    Takes a list of rule names and codes and returns a list of codes of the 
+    rules listed
+    '''
+    assert isinstance(rule, list)
+    codes = []
+    for rule in rule_list:
+        code = __rule_code(rule)
+        if code not in codes:
+            codes.append(code)
+    return codes
+
 def __set_config_dic(args):
+    '''
+    Takes a parser object as an argument. Consolidates user preferences given in
+    .gaplint.yml, the command line, and hardcoded in the gaplint.py global 
+    variable __CONFIG. Where different values are given for the same config 
+    option in any two or more of these ways, preference is given based on a 
+    configuration hierarchy. From top to bottom: __CONFIG, command line args,
+    .gaplint.ylml.
+    '''
     assert isinstance(args, object)
     global __CONFIG, __DEFAULT_CONFIG
 
     # yml config 3rd in hierarchy
-    temp_config = __get_config_yml_dic()
-    supps = temp_config['disable']
-    codes = []
-    for rule in supps:
-        codes.append(__rule_code(rule))
-    temp_config['disable'] = codes
-
+    temp_config = __get_config_yml_dic() # our working config dictionary
+    temp_config['disable'] = __get_code_list(temp_config['disable'])   
+    
     # superceded by command line options, 2nd in hierarchy
     if not args.max_warnings == __DEFAULT_CONFIG['max_warnings']:
-        temp_config['max_warnings'] = args.max_warnings
+        temp_config['max_warnings'] = args.max_warnings    
     if not args.columns ==  __DEFAULT_CONFIG['columns']:
-        temp_config['columns'] = args.columns
+        temp_config['columns'] = args.columns    
     if not args.disable ==  __DEFAULT_CONFIG['disable']:
-        temp = []
-        for rule in args.disable:
-            temp.append(__rule_code(rule))
-        suppdic = make_dic(temp, [True for a in args.disable])
-        temp_config['disable'] = suppdic
+        temp_config['disable'] = __get_code_list(args.disable)
     if not args.indentation ==  __DEFAULT_CONFIG['indentation']:
         temp_config['indentation'] = args.indentation
     
@@ -131,6 +147,7 @@ def __set_config_dic(args):
 
 def _get_config_val(key):
     '''
+
     '''
     global __CONFIG, __DEFAULT_CONFIG
     config_keys = __CONFIG.keys()
