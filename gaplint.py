@@ -73,6 +73,31 @@ def __get_config_yml_path(dir_path, checked_dirs=[]):
         pardir_path = os.path.abspath(os.path.join(pardir_path, os.pardir))
     return __get_config_yml_path(pardir_path, checked_dirs)
 
+def __valid_config_entry(dic, key):
+    '''
+    '''
+    require_int = ['max_warnings', 'indentation', 'columns']
+    require_list_strings = ['disable']
+    if not key in dic.keys():
+        _info_warn('gaplint: invalid key in ' + dic)
+        return False
+    if key in require_int:
+        if not key in require_int + require_list_strings:
+            _info_warn('gaplint: invalid config key in __CONFIG: ' + key)
+        return False
+        if not isinstance(dic[key], int):
+            _info_action('gaplint: incorrect config value, ' + key 
+                         + ' requires an int')
+            return False
+    if key in require_list_strings:
+        val = dic[key]
+        if not isinstance(val, list) and all(isinstance(x, str) for x in val):
+            _info_action('gaplint: incorrect config value, ' + key 
+                         + ' requires a list of strings')
+            return False
+    return True
+
+
 def __get_config_yml_dic():
     '''
     Takes no argument. Attempts to open the config file at the path returned by
@@ -95,6 +120,10 @@ def __get_config_yml_dic():
         except Exception:
             _info_action('gaplint: cannot open file .gaplint.yml, '
                          + 'using default configuration values')
+        # remove invalid yml user preferences and print warnings
+        for key in ymldic.keys(): 
+            if not __valid_config_entry(ymldic, key):
+                del ymldic[key]
         return ymldic
     else:
         _info_action('gaplint: config file .gaplint.yml not found, '
@@ -978,6 +1007,7 @@ def __rule_code(rule):
     '''
     Takes a rule name or code and returns the rule code.
     '''
+    assert (isinstance(rule, str) or rule == None)
     names = __get_all_rules_list('names')
     codes = __get_all_rules_list('codes')
     if rule in names:
@@ -1026,7 +1056,6 @@ def __get_global_suppdic(fname, lines):
     '''
     assert (isinstance(fname, str) and isinstance(lines, list)
             and all(isinstance(x, str) for x in lines))
-
     codes = __get_all_rules_list('codes')
     pattern1 = re.compile('^\s*($|#)') # empty/commented lines
     pattern2 = re.compile('\s*#\s*gaplint:\s*disable\s*=\s*') # keywords
