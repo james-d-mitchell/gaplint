@@ -75,28 +75,36 @@ def __get_config_yml_path(dir_path, checked_dirs=[]):
 
 def __valid_config_entry(dic, key):
     '''
+    Takes a configuration dictionary and key and returns True if both the key
+    is in the dictionary and the value associated is of the correct data type.
+    Otherwise we return False.
     '''
+    assert isinstance(dic, dict) and isinstance(key, str)
     require_int = ['max_warnings', 'indentation', 'columns']
     require_list_strings = ['disable']
-    if not key in dic.keys():
-        _info_warn('gaplint: invalid key in ' + dic)
+    
+    if not key in dic.keys(): # check key in dictionary
+        _info_warn('gaplint: invalid key, ' + key + ' not in ' + dic)
         return False
-    if key in require_int:
-        if not key in require_int + require_list_strings:
-            _info_warn('gaplint: invalid config key in __CONFIG: ' + key)
+    # check key is a valid config key
+    if not key in require_int + require_list_strings:
+        _info_warn('gaplint: invalid config key in __CONFIG: ' + key)
         return False
+    if key in require_int: # check for correct int values
         if not isinstance(dic[key], int):
             _info_action('gaplint: incorrect config value, ' + key 
                          + ' requires an int')
             return False
-    if key in require_list_strings:
+    if key in require_list_strings: # check for correct lists of strings
         val = dic[key]
-        if not isinstance(val, list) and all(isinstance(x, str) for x in val):
+        # accounting for case in which __CONFIG['disable'] = None
+        if not (val == None 
+                or (isinstance(val, list) 
+                    and all(isinstance(x, str) for x in val))):
             _info_action('gaplint: incorrect config value, ' + key 
                          + ' requires a list of strings')
-            return False
+            return False        
     return True
-
 
 def __get_config_yml_dic():
     '''
@@ -135,12 +143,14 @@ def __make_code_list(rule_list):
     Takes a list of rule names and codes and returns a list of the codes of the 
     rules given, excluding repetitions.
     '''
+    codes_list = []
+    if rule_list == None: # the case in which __CONFIG['disable'] = None
+        return codes_list
     assert isinstance(rule_list, list)
     codes = __get_all_rules_list('codes')
-    codes_list = []
     for rule in rule_list:
-         # if the keyword 'all' is given we needn't continue compiling our list 
-         # we return a list of all rule codes
+        # if the keyword 'all' is given we needn't continue compiling our list 
+        # we return a list of all rule codes
         if rule == 'all':
             return codes
         code = __rule_code(rule)
@@ -1007,7 +1017,7 @@ def __rule_code(rule):
     '''
     Takes a rule name or code and returns the rule code.
     '''
-    assert (isinstance(rule, str) or rule == None)
+    assert (isinstance(rule, str) or rule== None)
     names = __get_all_rules_list('names')
     codes = __get_all_rules_list('codes')
     if rule in names:
@@ -1056,6 +1066,7 @@ def __get_global_suppdic(fname, lines):
     '''
     assert (isinstance(fname, str) and isinstance(lines, list)
             and all(isinstance(x, str) for x in lines))
+
     codes = __get_all_rules_list('codes')
     pattern1 = re.compile('^\s*($|#)') # empty/commented lines
     pattern2 = re.compile('\s*#\s*gaplint:\s*disable\s*=\s*') # keywords
@@ -1227,6 +1238,11 @@ def __is_rule_disabled_suppressed(fname, linenum, code):
     return False
 
 def __load_user_preferences(args):
+    '''
+    Takes a parser object as argument and populates the global variables 
+    __CONFIG, __SUPPRESSIONS and __GLOBAL suppressions based on user 
+    preferences.
+    '''
     assert isinstance(args, object)
     __set_user_config_dic(args)
     __set_suppression_dics(args.files)
