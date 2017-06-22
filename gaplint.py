@@ -26,53 +26,41 @@ __DEFAULT_CONFIG = {'columns': 80, 'max_warnings': 1000, 'indentation': 2,
 __CONFIG = {}
 __SUPPRESSIONS = {}
 __GLOBAL_SUPPRESSIONS = {}
+__USER_PREFERENCES_LOADED = False
 
 ################################################################################
 # Configuration
 ################################################################################
 
-def __get_config_yml_path(dir_path, checked_dirs=[]): 
+def __get_config_yml_path(dir_path): 
     '''
-    Takes the path of a directory to search and a list of those already
-    searched. The function recursively searches for the gaplint.yml config
-    script. It begins the search at dir_path. If the .yml is not found, the
-    funtion is called recursively on any child directories, and if it is still
-    not found, the parent directory. The recursive calls are repeated until
-    either the .yml script is found or a .git directory is reached. If no
-    configuration script is found None is returned. Otherwise the path to the
-    .yml is returned.
+    Recursive function that takes the path of a directory to search and searches 
+    for the gaplint.yml config script. If the script is not found the function
+    is then called on the parent directory - recursive case. This continues 
+    until we encounter a directory .git in our search (script not found, returns 
+    None), locate the script (returns script path), or until the root directory 
+    has been searched (script not found, returns None) - base cases A, B, C.
     '''
     assert os.path.isdir(dir_path)
-    # We keep track of directories we have already searched with the list,
-    # checked_dirs. This way we do not search directories a second time as we 
-    # backtrack.
-    checked_dirs.append(dir_path)
-    # initialise list of entries in the directory we are currently searching
-    entries = os.listdir(dir_path)
-
-    # Base case A: if the config script is found in entries, we return the path.
-    if '.gaplint.yml' in entries: 
-        return dir_path + '/.gaplint.yml'
-
-    # Base case B: if a directory .git is found in entries or if the directory 
-    # we are currently searching is called .git, we return None.
-    if '.git' in entries or dir_path == '.git':
-        return None
-
-    # Recursive case A: if there are directories in entries that have not  been 
-    # searched, we make the recursive call on each.
-    for e in entries:
-        e_path = dir_path + '/' + e
-        if os.path.isdir(e_path) and e_path not in checked_dirs:
-            return __get_config_yml_path(e_path, checked_dirs)
-
-    # Recursive case B: if no child-directories contain the config script, we 
-    # make the recursive call on the nearest unsearched parent directory.
+    entries = os.listdir(dir_path) # initialise list of entries in the...
+    # ...directory we are currently searching
+    for entry in entries:
+        entry_isdir = os.path.isdir(os.path.abspath
+                                    (os.path.join(dir_path, entry))) # if...
+        # ...entry a directory, True, else False
+        if entry_isdir and entry == '.git': # base case A
+            return None
+        if not entry_isdir and entry == '.gaplint.yml': # base case B
+            yml_path = os.path.abspath(os.path.join(dir_path, '.gaplint.yml'))
+            return yml_path     
+    # if A and B not satisfied, recursive call made on parent directory
     pardir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
-    while pardir_path in checked_dirs:
-        pardir_path = os.path.abspath(os.path.join(pardir_path, os.pardir))
-    return __get_config_yml_path(pardir_path, checked_dirs)
-
+    # when os.pardir is called on the root directory path, it just returns the
+    # path to the root directory again, hence...
+    if pardir_path == dir_path: # base case C
+        return None
+    return __get_config_yml_path(pardir_path) # recursive call
+    
 def __valid_config_entry(dic, key):
     '''
     Takes a configuration dictionary and key and returns True if both the key
@@ -172,19 +160,25 @@ def __set_user_config_dic(args):
 
     # yml config 3rd in hierarchy
     temp_config = __get_config_yml_dic() # our working config dictionary
-    temp_config['disable'] = __make_code_list(temp_config['disable'])   
-    
-    # superceded by command line options, 2nd in hierarchy
+    temp_config['disable'] = __make_code_list(temp_config['disable']) # make..
+    # ...into list of only rule codes
+
+    # yml config superceded by command line options, 2nd in hierarchy
+    # - args.disable returns a string of rules separated by commas
+    # - we make it into a list of rule codes
+    rules_to_disable = [x.strip() for x in args.disable.split(',')]
+    rules_to_disable = __make_code_list(rules_to_disable)
+    if not rules_to_disable ==  __DEFAULT_CONFIG['disable']:
+        temp_config['disable'] = rules_to_disable
     if not args.max_warnings == __DEFAULT_CONFIG['max_warnings']:
         temp_config['max_warnings'] = args.max_warnings    
     if not args.columns ==  __DEFAULT_CONFIG['columns']:
-        temp_config['columns'] = args.columns    
-    if not args.disable ==  __DEFAULT_CONFIG['disable']:
-        temp_config['disable'] = __make_code_list(args.disable)
+        temp_config['columns'] = args.columns
     if not args.indentation ==  __DEFAULT_CONFIG['indentation']:
         temp_config['indentation'] = args.indentation
-    
-    # superceded by contents of global variable __CONFIG, top of hierarchy
+
+    # command line options superceded by contents of global variable... 
+    # ...__CONFIG, top of hierarchy
     for option in temp_config.keys():
         if not option in __CONFIG.keys():
             __CONFIG[option] = temp_config[option]
@@ -858,7 +852,7 @@ def _parse_args(kwargs):
                         help='max number of characters per line (default: 80)')
     parser.set_defaults(columns=_get_config_val('columns'))
 
-    parser.add_argument('--disable', nargs='?', type=list, help='gaplint rules '
+    parser.add_argument('--disable', nargs='?', type=str, help='gaplint rules '
                         + '(name or code) to disable (default: [])')
     parser.set_defaults(disable=_get_config_val('disable'))
 
@@ -1224,13 +1218,17 @@ def __is_rule_suppressed(fname, linenum, code):
 # user preferences
 ################################################################################
 
-def __is_rule_disabled_suppressed(fname, linenum, code):
+def __is_rule_disabled_or_suppressed(args, fname, linenum, code):
     '''
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     '''
+    global __USER_PREFERENCES_LOADED
     assert (all(isinstance(x, str) for x in [fname, code]) 
             and isinstance(linenum, int))
+    if not __USER_PREFERENCES_LOADED:
+        __load_user_preferences(args) # config and suppressions for run
+        __USER_PREFERENCES_LOADED = True
     if code in _get_config_val('disable'):
         return True       
     if __is_rule_suppressed(fname, linenum, code):
@@ -1268,8 +1266,6 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
     '''    
     args = _parse_args(kwargs)
 
-    __load_user_preferences(args) # config and suppressions for run
-
     total_nr_warnings = 0
 
     for fname in args.files:
@@ -1285,8 +1281,10 @@ def run_gaplint(**kwargs): #pylint: disable=too-many-branches
         for i in xrange(len(lines)):
             lines[i] = _remove_prefix(lines[i], ext)
             for rule in RULES:
-                is_rule_dis = __is_rule_disabled_suppressed(fname, i, rule.code)
-                if (not rule.skip(ext)) and (not is_rule_dis):
+                is_rule_supp = __is_rule_disabled_or_suppressed(args, 
+                                                                fname, 
+                                                                i, rule.code)
+                if (not rule.skip(ext)) and (not is_rule_supp):
                     try:
                         ro = rule(lines[i])
                     except AssertionError:
