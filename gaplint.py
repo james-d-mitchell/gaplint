@@ -45,9 +45,9 @@ def __get_config_yml_path(dir_path):
     entries = os.listdir(dir_path) # initialise list of entries in the...
     # ...directory we are currently searching
     for entry in entries:
+        # if entry a directory, True, else False
         entry_isdir = os.path.isdir(os.path.abspath
-                                    (os.path.join(dir_path, entry))) # if...
-        # ...entry a directory, True, else False
+                                    (os.path.join(dir_path, entry))) 
         if entry_isdir and entry == '.git': # base case A
             return None
         if not entry_isdir and entry == '.gaplint.yml': # base case B
@@ -56,7 +56,7 @@ def __get_config_yml_path(dir_path):
     # if A and B not satisfied, recursive call made on parent directory
     pardir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
     # when os.pardir is called on the root directory path, it just returns the
-    # path to the root directory again, hence...
+    # path to the root directory again, hence
     if pardir_path == dir_path: # base case C
         return None
     return __get_config_yml_path(pardir_path) # recursive call
@@ -160,12 +160,11 @@ def __set_user_config_dic(args):
 
     # yml config 3rd in hierarchy
     temp_config = __get_config_yml_dic() # our working config dictionary
-    temp_config['disable'] = __make_code_list(temp_config['disable']) # make..
-    # ...into list of only rule codes
+    temp_config['disable'] = __make_code_list(temp_config['disable'])
 
     # yml config superceded by command line options, 2nd in hierarchy
-    # - args.disable returns a string of rules separated by commas
-    # - we make it into a list of rule codes
+    # Note: args.disable returns a string of rules separated by commas - we make
+    # it into a list of rule codes.
     rules_to_disable = [x.strip() for x in args.disable.split(',')]
     rules_to_disable = __make_code_list(rules_to_disable)
     if not rules_to_disable ==  __DEFAULT_CONFIG['disable']:
@@ -177,8 +176,8 @@ def __set_user_config_dic(args):
     if not args.indentation ==  __DEFAULT_CONFIG['indentation']:
         temp_config['indentation'] = args.indentation
 
-    # command line options superceded by contents of global variable... 
-    # ...__CONFIG, top of hierarchy
+    # Command line options superceded by contents of global variable __CONFIG, 
+    # top of hierarchy.
     for option in temp_config.keys():
         if not option in __CONFIG.keys():
             __CONFIG[option] = temp_config[option]
