@@ -37,7 +37,7 @@ to the start of the file before any lines that contain any code. All rules are e
 | `W022` | `whitespace-op-equals` | Warns if there is not exactly one space either side of equals (=) operator |
 | `W023` | `whitespace-op-mapping` | Warns if there is not exactly one space either side of mapping (->) operator |
 | `W024` | `whitespace-op-divide` | Warns if there is not exactly one space either side of divide (/) operator | 
-| `W025` | `whitespace-op-power` | Warns if there is not exactly one space either side of No spaces the power (^) operator |
+| `W025` | `whitespace-op-power` | Warns if there is not exactly one space either side of the power (^) operator |
 | `W026` | `whitespace-op-not-equal` | Warns if there is not exactly one space either side of not-equal (<>) operator |
 | `W027` | `whitespace-op-double-dot` | Warns if there is not exactly one space either side of arithmetic progression (\.\.) operator |
 | `W028` | `unused-local-variables` | Warns if there are declared local variables that are not used |
