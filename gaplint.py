@@ -619,6 +619,11 @@ class UnusedLVarsFunc(Rule):  # pylint: disable=too-many-instance-attributes
         assert not self._consuming_args and not self._consuming_lvars
 
         ro = RuleOutput(line)
+        if len(self._lvars) == 0:
+            ro.msg = '\'end\' outside function'
+            ro.abort = True
+            return ro
+
         self._depth -= 1
         lvars = [key for key in self._lvars.pop()]
         self._args.pop()
