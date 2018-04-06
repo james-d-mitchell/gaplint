@@ -1,5 +1,5 @@
 # gaplint: disable=a-rule, another-rule
-# gaplint: disable=another-rule2
+# gaplint: disable=another-rule2, M000
 1 + 1+ 1; # 1 warning
 1 + 1;    # 0 warnings
 1- 1; foo := x -> x ^ 2; # 1 warning
@@ -34,7 +34,7 @@ x   := 1;
 """ A multiline string in  1-2
 several lines.
 Another line. Something that should generate a warning is 1-2"""
-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 if x = 1 then 
 Print("testing inappropriate indentation");
@@ -60,4 +60,9 @@ end;
 foo := function(x, y, z)
   return x + y;
 end;
-# 22 warnings
+function(x)
+  local test, y;
+  y := 0;
+  test := rec(x := y, y := x, z := (1,2,3));
+end;
+# 50 warnings

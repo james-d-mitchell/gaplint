@@ -1,11 +1,9 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2 -O
 '''
 This module provides functions for automatically checking the format of a GAP
 file according to some conventions.
 '''
-# pylint: disable=invalid-name, dangerous-default-value, broad-except
-# pylint: disable=too-few-public-methods, fixme, global-statement
-# pylint: disable=too-many-lines
+# pylint: skip-file
 
 import re
 import sys
@@ -13,30 +11,39 @@ import argparse
 import os
 import yaml
 
+
 ###############################################################################
 # Globals
 ###############################################################################
 
 _VERBOSE = False
-_SILENT = True
+_SILENT = False
 _VALID_EXTENSIONS = set(['g', 'g.txt', 'gi', 'gd', 'gap', 'tst', 'xml'])
+_GAP_KEYWORDS = {'and', 'atomic', 'break', 'continue', 'do', 'elif', 'else',
+                 'end', 'false', 'fi', 'for', 'function', 'if', 'in', 'local',
+                 'mod', 'not', 'od', 'or', 'readonly', 'readwrite', 'rec',
+                 'repeat', 'return', 'then', 'true', 'until', 'while', 'quit',
+                 'QUIT', 'IsBound', 'Unbind', 'TryNextMethod', 'Info',
+                 'Assert'}
 
-__DEFAULT_CONFIG = {'max_warnings': 1000, 'columns': 80, 'indentation': 2}
-__GLOB_CONFIG = {}
-__GLOB_SUPPRESSIONS = {}
-__FILE_SUPPRESSIONS = {}
-__LINE_SUPPRESSIONS = {}
+_DEFAULT_CONFIG = {'max_warnings': 1000,
+                   'columns': 80,
+                   'indentation': 2}
 
-__CONFIGURED = False
-_REMOVE_PREFIX = None
-RULES = []
+_GLOB_CONFIG = {}
+_GLOB_SUPPRESSIONS = {}
+_FILE_SUPPRESSIONS = {}
+_LINE_SUPPRESSIONS = {}
 
+_CONFIGURED = False
+_LINE_RULES = []
+_FILE_RULES = []
 
-def _get_glob_config(key):
-    return __GLOB_CONFIG[key]
+_ESCAPE_PATTERN = re.compile(r'(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)')
+
 
 ###############################################################################
-# Colourize strings
+# Strings helpers
 ###############################################################################
 
 
@@ -45,122 +52,100 @@ def _red_string(string):
     return '\033[31m' + string + '\033[0m'
 
 
-def _yellow_string(string):
-    assert isinstance(string, str)
-    return '\033[33m' + string + '\033[0m'
+def _is_tst_or_xml_file(fname):
+    '''Returns True if the extension of fname is '.xml' or '.tst'.'''
+    assert isinstance(fname, str)
+    ext = fname.split('.')[-1]
+    return ext == 'tst' or ext == 'xml'
 
 
-def _neon_green_string(string):
-    assert isinstance(string, str)
-    return '\033[40;38;5;82m' + string + '\033[0m'
+def _pad(nrlines, linenum):
+    '''Returns the number of spaces required to pad the integer argument
+       linenum so that it is the same length as len(lines).'''
+    assert isinstance(nrlines, int)
+    assert isinstance(linenum, int)
+    return len(str(nrlines)) + 1 - len(str(linenum + 1))
 
 
-def _orange_string(string):
-    assert isinstance(string, str)
-    return '\033[40;38;5;208m' + string + '\033[0m'
+def _is_escaped(lines, pos):
+    assert isinstance(lines, str)
+    assert isinstance(pos, int)
+    assert pos >= 0 and pos < len(lines)
+    if lines[pos - 1] != '\\':
+        return False
+    start = lines.rfind('\n', 0, pos)
+    # Search for an odd number of backslashes immediately before line[pos]
+    return _ESCAPE_PATTERN.search(lines[start + 1:pos][::-1])
 
 
-def _pad(lines, linenum):
-    return len(str(len(lines))) + 1 - len(str(linenum + 1))
+def _is_double_quote_in_char(line, pos):
+    assert isinstance(line, str)
+    assert isinstance(pos, int)
+    assert pos >= 0 and pos < len(line)
+    return (pos > 0 and pos + 1 < len(line)
+            and line[pos - 1:pos + 2] == '\'"\''
+            and not _is_escaped(line, pos - 1))
 
 
-def _eol(line):
-    return (line[-1] == '\n') * '\n'
+def _is_in_string(lines, pos):
+    start = lines.rfind('\n', 0, pos)
+    line = re.sub(r'\\.', '', lines[start:pos])
+    return line.count('"') % 2 == 1 or line.count("'") % 2 == 1
 
 ###############################################################################
 # Exit messages
 ###############################################################################
 
 
-def _exit_abort(message=None):
-    if message:
-        assert isinstance(message, str)
-        sys.exit(_red_string('gaplint: ' + message + '! Aborting!'))
-    else:
-        sys.exit(_red_string('gaplint: Aborting!'))
+def _exit_abort(msg='', fname=None, lines=None, linenum=None):
+    assert isinstance(msg, str)
+    msg += ' ' * (0 if len(msg) == 0 else 1) + 'Aborting!'
+    sys.exit(_red_string(msg))
 
 ###############################################################################
 # Info messages
 ###############################################################################
 
 
-def _info_statement(message):
+def _info_statement(msg):
     if not _SILENT:
-        assert isinstance(message, str)
-        sys.stdout.write(_neon_green_string(message) + '\n')
+        assert isinstance(msg, str)
+        sys.stdout.write('\033[40;38;5;82m%s\033[0m\n' % msg)
 
 
-def _info_action(message):
-    assert isinstance(message, str)
-    sys.stdout.write(_yellow_string(message) + '\n')
+def _info_action(msg):
+    assert isinstance(msg, str)
+    sys.stdout.write('\033[33m%s\033[0m\n' % msg)
 
 
-def _info_verbose(fname, linenum, message, pad=1):
+def _info_verbose(msg):
     if not _SILENT and _VERBOSE:
-        assert isinstance(message, str)
-        sys.stdout.write(_orange_string(fname + ':' + str(linenum + 1)
-                                        + ' ' * pad + message))
+        assert isinstance(msg, str)
+        sys.stdout.write('\033[40;38;5;208m%s\033[0m\n' % msg)
 
 
-def _info_warn(fname, linenum, message, pad=1):
+def _info_warn_line(fname, lines, linenum, msg):
     if not _SILENT:
-        assert isinstance(fname, str) and isinstance(message, str)
-        assert isinstance(linenum, int) and isinstance(pad, int)
-        sys.stderr.write(_red_string('WARNING in ' + fname + ':'
-                                     + str(linenum + 1) + ' ' * pad
-                                     + message) + '\n')
+        assert isinstance(fname, str)
+        assert isinstance(lines, list)
+        assert isinstance(linenum, int)
+        assert isinstance(msg, str)
+        msg = ' ' * _pad(len(lines), linenum) + msg + '\n'
+        sys.stderr.write(_red_string('WARNING in %s:%d%s'
+                                     % (fname, linenum + 1, msg)))
+
+
+def _info_warn_file(fname, lines, pos, msg):
+    if not _SILENT:
+        assert isinstance(lines, str)
+        linenum = lines.count('\n', 0, pos)
+        msg = ' ' * _pad(lines.count('\n'), linenum) + msg + '\n'
+        sys.stderr.write(_red_string('WARNING in %s:%d%s'
+                                     % (fname, linenum + 1, msg)))
 
 ###############################################################################
-# Rule output
+# Rules: a rule is just a function or callable class.
 ###############################################################################
-
-
-class RuleOutput(object):
-    '''
-    The output of a rule.
-
-    Attributes:
-        line  (str) : possibly modified version of the argument line
-        msg   (str) : a warning message (defaults to None)
-        abort (bool): indicating if we should abort the script
-                      (defaults to False)
-    '''
-
-    def __init__(self, line, msg=None, abort=False):
-        '''
-        This is used for the output of a rule as applied to line.
-
-        Args:
-            line  (str) : a line of GAP code
-            msg   (str) : a warning message (defaults to None)
-            abort (bool): indicating if we should abort the script
-                          (defaults to False)
-        '''
-        self.line = line
-        self.msg = msg
-        self.abort = abort
-
-###############################################################################
-# Rules: a rule is just a function or callable class returning a RuleOutput
-###############################################################################
-
-
-def _skip_tst_or_xml_file(ext):
-    return ext == 'tst' or ext == 'xml'
-
-
-_ESCAPE_PATTERN = re.compile(r'(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)')
-
-
-def _is_escaped(line, pos):
-    assert isinstance(line, str) and isinstance(pos, int)
-    assert (pos >= 0 and pos < len(line)) or (pos < 0 and len(line) + pos > 0)
-    if pos < 0:
-        pos = len(line) + pos
-    if line[pos - 1] != '\\':
-        return False
-    # Search for an odd number of backslashes immediately before line[pos]
-    return _ESCAPE_PATTERN.search(line[:pos][::-1])
 
 
 class Rule(object):
@@ -168,7 +153,7 @@ class Rule(object):
     Base class for rules.
 
     A rule is a subclass of this class which has a __call__ method that returns
-    a RuleOutput object.
+    TODO
     '''
     def __init__(self, name=None, code=None):
         assert isinstance(name, str) or (name is None and code is None)
@@ -187,242 +172,39 @@ class Rule(object):
         '''
         pass
 
-    def skip(self, ext):
-        '''
-        Skip the rule.
 
-        In some circumstances we might want to skip a rule, the rule is skipped
-        if this method returns True. The default return value is falsy.
-        '''
-        pass
-
-
-class RemoveComments(Rule):
-    '''
-    Remove the GAP comments in a line.
-
-    When called this rule truncates the line given as a parameter to remove any
-    comments. This is to avoid matching linting issues within comments, where
-    the issues do not apply.
-
-    This rule does not return any warnings.
-    '''
-
-    def _is_in_string(self, line, pos):  # pylint: disable=no-self-use
-        line = re.sub(r'\\.', '', line[:pos])
-        return line.count('"') % 2 == 1 or line.count("'") % 2 == 1
-
-    def __call__(self, line):
-        assert isinstance(line, str)
-        try:
-            i = next(i for i in xrange(len(line)) if line[i] == '#' and not
-                     self._is_in_string(line, i))
-        except StopIteration:
-            return RuleOutput(line)
-        return RuleOutput(line[:i] + _eol(line))
-
-
-class ReplaceMultilineStrings(Rule):
-    '''
-    Replace multiline strings.
-
-    When called this rule modifies the line given as a parameter to remove any
-    multiline strings, and replace them with __REMOVED_MULTILINE_STRING__. This
-    is to avoid matching linting issues within strings, where the issues do not
-    apply.
-
-    This rule does not return any warnings.
-    '''
-    def __init__(self, name=None, code=None):
-        self._consuming = False
-        Rule.__init__(self, name, code)
-
-    def __call__(self, line):
-        ro = RuleOutput(line)
-        if self._consuming:
-            end = line.find('"""')
-            ro.line = '__REMOVED_MULTILINE_STRING__'
-            if end != -1:
-                ro.line += line[end + 3:]
-                self._consuming = False
-            else:
-                ro.line += _eol(line)
-        else:
-            start = line.find('"""')
-            if start != -1:
-                self._consuming = True
-                end = line.find('"""', start + 3)
-                ro.line = line[:start] + '__REMOVED_MULTILINE_STRING__'
-                if end != -1:
-                    self._consuming = False
-                    ro.line += line[end + 3:]
-                else:
-                    ro.line += _eol(line)
-        return ro
-
-    def reset(self):
-        self._consuming = False
-
-
-def _is_double_quote_in_char(line, pos):
-    assert isinstance(line, str) and isinstance(pos, int)
-    return (pos > 0 and pos + 1 < len(line)
-            and line[pos - 1:pos + 2] == '\'"\''
-            and not _is_escaped(line, pos - 1))
-
-
-class ReplaceQuotes(Rule):
-    '''
-    Remove everything between non-escaped <quote>s in a line.
-
-    Strings and chars are replaced with <replacement>, and hence alter the
-    length of the line, and its contents. If either of these is important for
-    another rule, then that rule should be run before this one.
-
-    This rule returns warnings if a line has an escaped quote outside a string
-    or character, or if a line contains an unmatched unescaped quote.
-    '''
-    def __init__(self, name, code, quote, replacement):
-        Rule.__init__(self, name, code)
-        self._quote = quote
-        self._replacement = replacement
-        self._cont_replacement = replacement[:-1] + 'CONTINUATION__'
-        self._consuming = False
-
-    def _next_valid_quote(self, line, pos):
-        assert isinstance(line, str) and isinstance(pos, int)
-        assert pos >= 0
-        pos = line.find(self._quote, pos)
-        while (pos >= 0
-               and (_is_escaped(line, pos)
-                    or _is_double_quote_in_char(line, pos))):
-            pos = line.find(self._quote, pos + 1)
-        return pos
-
-    def __call__(self, line):
-        # TODO if we want to allow the script to modify the input, then we
-        # better keep the removed strings/chars, and index the replacements so
-        # that we can put them back at some point later on.
-        assert isinstance(line, str)
-        cont_replacement = self._cont_replacement
-        ro = RuleOutput(line)
-        beg = 0
-
-        if self._consuming:
-            end = self._next_valid_quote(line, 0)
-            if end != -1:
-                self._consuming = False
-                ro.line = cont_replacement + ro.line[end + 1:]
-                beg = end + 1
-            else:
-                if _is_escaped(line, -1):
-                    ro.line = cont_replacement + _eol(line)
-                else:
-                    ro.msg = 'invalid continuation of string'
-                    ro.abort = True
-                return ro
-
-        replacement = self._replacement
-        beg = self._next_valid_quote(ro.line, beg)
-
-        while beg != -1:
-            end = self._next_valid_quote(ro.line, beg + 1)
-            if end == -1:
-                if _is_escaped(ro.line, -1):
-                    self._consuming = True
-                    ro.line = ro.line[:beg] + cont_replacement + _eol(line)
-                else:
-                    ro.msg = 'unmatched quote ' + self._quote
-                    ro.msg += ' in column ' + str(beg + 1)
-                    ro.abort = True
-                break
-            ro.line = ro.line[:beg] + replacement + ro.line[end + 1:]
-            beg = self._next_valid_quote(ro.line, beg + len(replacement) + 1)
-        return ro
-
-
-class RemovePrefix(object):
-    '''
-    This is not a rule. This is just a callable class to remove the prefix
-    'gap>' or '>' if called with a line from a file with extension 'tst' or
-    'xml', if the line does not start with a 'gap>' or '>', then the entire
-    line is replaced with __REMOVED_LINE_FROM_TST_OR_XML_FILE__.
-    '''
-    def __init__(self):
-        self._consuming = False
-        self._gap_gt_prefix = re.compile(r'^gap>\s*')
-        self._gt_prefix = re.compile(r'^>\s*')
-        # TODO if linting an xml file warn about whitespace before gap> or >
-
-    def __call__(self, line, ext):
-        if ext == 'tst' or ext == 'xml':
-            m = self._gap_gt_prefix.search(line)
-            if m:
-                line = line[m.end():]
-                self._consuming = True
-            elif self._consuming:
-                m = self._gt_prefix.search(line)
-                if m:
-                    line = line[m.end():]
-                else:
-                    line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__' + _eol(line)
-                    self._consuming = False
-            else:
-                line = '__REMOVED_LINE_FROM_TST_OR_XML_FILE__' + _eol(line)
-        return line
-
-
-class LineTooLong(Rule):
-    '''
-    Warn if the length of a line exceeds 80 characters.
-
-    This rule does not modify the line.
-    '''
-    def __call__(self, line):
-        assert isinstance(line, str)
-        ro = RuleOutput(line)
-        cols = _get_glob_config('columns')
-        if len(line) - 1 > cols:
-            ro.msg = 'too long line (%d / %d)' % (len(line) - 1, cols)
-        return ro
-
-
-class WarnRegex(Rule):
+class WarnRegexBase(Rule):
     '''
     Instances of this class produce a warning whenever a line matches the
     pattern used to construct the instance except if one of a list of
     exceptions is also matched.
     '''
 
-    def __init__(self,  # pylint: disable=too-many-arguments
+    def __init__(self,
                  name,
                  code,
                  pattern,
                  warning_msg,
                  exceptions=[],
-                 skip=lambda ext: None):
-        # pylint: disable=bad-builtin, unnecessary-lambda, deprecated-lambda
+                 skip=lambda fname: False):
         Rule.__init__(self, name, code)
         assert isinstance(pattern, str)
         assert isinstance(warning_msg, str)
         assert isinstance(exceptions, list)
         assert reduce(lambda x, y: x and isinstance(y, str), exceptions, True)
-
         self._pattern = re.compile(pattern)
         self._warning_msg = warning_msg
         self._exception_patterns = exceptions
         self._exception_group = None
-        self._exceptions = map(lambda e: re.compile(e), exceptions)
+        self._exceptions = [re.compile(e) for e in exceptions]
         self._skip = skip
 
-    def __call__(self, line):
-        nr_matches = 0
-        msg = None
+    def _match(self, line):
         exception_group = self._exception_group
         it = self._pattern.finditer(line)
         for x in it:
+            exception = False
             if len(self._exceptions) > 0:
-                exception = False
                 x_group = x.groups().index(exception_group) + 1
                 for e in self._exceptions:
                     ite = e.finditer(line)
@@ -433,30 +215,448 @@ class WarnRegex(Rule):
                             break
                     if exception:
                         break
-                else:
-                    nr_matches += 1
+            if not exception:
+                return x.start()
+        return None
+
+    def skip(self, fname):
+        '''
+        Returns True if this rule should not be applied to fname.
+        '''
+        return self._skip(fname)
+
+###############################################################################
+# File rules
+###############################################################################
+
+
+class ReplaceAnnoyUTF8Chars(Rule):
+    '''
+    This rule replaces occurrences of annoying UTF characters from an entire
+    file by their ascii equivalent.
+
+    This could issue a warning rather than doing this replacement, but
+    currently does not.
+    '''
+    def __init__(self, name=None, code=None):
+        Rule.__init__(self, name, code)
+        self._chars = {'\xc2\x82': ',',        # High code comma
+                       '\xc2\x84': ',,',       # High code double comma
+                       '\xc2\x85': '...',      # Triple dot
+                       '\xc2\x88': '^',        # High carat
+                       '\xc2\x91': '\x27',     # Forward single quote
+                       '\xc2\x92': '\x27',     # Reverse single quote
+                       '\xc2\x93': '\x22',     # Forward double quote
+                       '\xc2\x94': '\x22',     # Reverse double quote
+                       '\xc2\x95': ' ',
+                       '\xc2\x96': '-',        # High hyphen
+                       '\xc2\x97': '--',       # Double hyphen
+                       '\xc2\x99': ' ',
+                       '\xc2\xa0': ' ',
+                       '\xc2\xa6': '|',        # Split vertical bar
+                       '\xc2\xab': '<<',       # Double less than
+                       '\xc2\xbb': '>>',       # Double greater than
+                       '\xc2\xbc': '1/4',      # one quarter
+                       '\xc2\xbd': '1/2',      # one half
+                       '\xc2\xbe': '3/4',      # three quarters
+                       '\xca\xbf': '\x27',     # c-single quote
+                       '\xcc\xa8': '',         # modifier - under curve
+                       '\xcc\xb1': ''}         # modifier - under line
+
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        # _info_verbose('%s called on %s'
+        #               % (self.__class__.__name__, fname))
+
+        # Remove annoying characters
+        def replace_chars(match):  # pylint: disable=missing-docstring
+            char = match.group(0)
+            return self._chars[char]
+        return (nr_warnings,
+                re.sub('(' + '|'.join(self._chars.keys()) + ')',
+                       replace_chars,
+                       lines))
+
+
+class WarnRegexFile(WarnRegexBase):
+    '''
+    A rule that issues a warning if everytime a regex is matched in a file.
+    '''
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        if not _is_tst_or_xml_file(fname):
+            match = self._match(lines)
+            if match:
+                _info_warn_file(fname, lines, match, self._warning_msg)
+                return nr_warnings + 1, lines
+        return nr_warnings, lines
+
+
+class ReplaceComments(Rule):
+    '''
+    Replace between '#+' and the end of a line by '#+' and as many '@' as there
+    were other characters in the line, call before replacing strings, and
+    chars, and so on.
+
+    This rule does not return any warnings.
+    '''
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        start = lines.find('#', 0)
+        while start != -1 and _is_in_string(lines, start):
+            start = lines.find('#', start + 1)
+        while start != -1:
+            end = lines.find('\n', start)
+            repl = ''
+            octo = start
+            while octo < len(lines) and lines[octo] == '#':
+                repl += '#'
+                octo += 1
+            repl += re.sub(r'\S', '@', lines[octo:end])
+            lines = (lines[:start] + repl + lines[end:])
+            start = lines.find('#', end)
+            while _is_in_string(lines, start):
+                start = lines.find('#', start + 1)
+        return nr_warnings, lines
+
+
+class ReplaceBetweenDelimiters(Rule):
+    '''
+    Replace all characters between delim1 and delim2 by #'s except possibly
+    whitespace.
+
+    This rule does not return any warnings.
+    '''
+
+    def __init__(self, name, code, delim1, delim2):
+        Rule.__init__(self, name, code)
+        assert isinstance(delim1, str)
+        assert isinstance(delim2, str)
+        self._delims = [re.compile(delim1), re.compile(delim2)]
+
+    def __find_next(self, which, lines, start):
+        assert which == 0 or which == 1
+        assert isinstance(lines, str)
+        assert isinstance(start, int)
+        assert start < len(lines)
+        delim = self._delims[which]
+        match = delim.search(lines, start)
+        while (match is not None
+               and (_is_escaped(lines, match.start())
+                    or _is_double_quote_in_char(lines, match.start()))):
+            match = delim.search(lines, match.start() + len(delim.pattern))
+        return -1 if match is None else match.start()
+
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+
+        start = self.__find_next(0, lines, 0)
+        while start != -1:
+            end = self.__find_next(1, lines, start + 1)
+            if end == -1:
+                _exit_abort('Unmatched delimiter!')
+            end += len(self._delims[1].pattern)
+            repl = re.sub('[^\n]', '@', lines[start:end])
+            assert len(repl) == end - start
+
+            lines = lines[:start] + repl + lines[end:]
+            start = self.__find_next(0, lines, end + 1)
+        return nr_warnings, lines
+
+
+class ReplaceOutputTstOrXMLFile(Rule):
+    '''
+    This rule removes the prefix 'gap>' or '>' if called with a line from a
+    file with extension 'tst' or 'xml', if the line does not start with a
+    'gap>' or '>', then the entire line is replaced with an equal number of
+    '@''s.
+    '''
+    def __init__(self, name=None, code=None):
+        Rule.__init__(self, name, code)
+        self._consuming = False
+        self._sol_p = re.compile(r'(^|\n)gap>\s*')
+        self._eol_p = re.compile(r'($|\n)')
+        self._rep_p = re.compile(r'[^\n]')
+
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        if _is_tst_or_xml_file(fname):
+            eol, out = 0, ''
+            for sol in self._sol_p.finditer(lines):
+                # Replace everything except '\n' with '@'
+                out += re.sub(self._rep_p, '@', lines[eol:sol.start() + 1])
+                eol = self._eol_p.search(lines, sol.end()).end()
+                out += lines[sol.end():eol]
+                while eol + 1 < len(lines) and lines[eol] == '>':
+                    start = eol + 2
+                    eol = self._eol_p.search(lines, start).end()
+                    out += lines[start:eol]
+            return nr_warnings, out
+        else:
+            return nr_warnings, lines
+
+
+class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
+    '''
+    This rule checks if there are unused local variables in a function.
+    '''
+    def __init__(self, name=None, code=None):
+        Rule.__init__(self, name, code)
+        self.reset()
+
+        self._function_p = re.compile(r'\bfunction\b')
+        self._end_p = re.compile(r'\bend\b')
+        self._local_p = re.compile(r'\blocal\b')
+        self._var_p = re.compile(r'\w+')
+        self._ass_var_p = re.compile(r'([a-zA-Z0-9_\.]+)\s*:=')
+        self._use_var_p = re.compile(r'(\b\w+\b)(?!\s*:=)\W*')
+        self._ws1_p = re.compile(r'[ \t\r\f\v]+')
+        self._ws2_p = re.compile(r'\n[ \t\r\f\v]+')
+        self._rec_p = re.compile(r'\brec\(')
+
+    def reset(self):
+        self._depth = -1
+        self._func_args = []
+        self._declared_lvars = []
+        self._assigned_lvars = []
+        self._used_lvars = []
+        self._func_start_pos = []
+
+    def _remove_recs_and_whitespace(self, lines):
+        # Remove almost all whitespace
+        lines = re.sub(self._ws1_p, ' ', lines)
+        lines = re.sub(self._ws2_p, '\n', lines)
+
+        stack = []
+        pos = 0
+        # Replace rec( -> ) so that we do not match assignments inside records
+        while pos < len(lines):
+            if self._rec_p.search(lines, pos, pos + 5):
+                stack.append(pos)
+                pos += 4
+            elif lines[pos] == '(' and len(stack) > 0:
+                stack.append(None)
+            elif lines[pos] == ')' and len(stack) > 0:
+                start = stack.pop()
+                if start is not None:
+                    nr_newlines = lines[start + 1: pos + 1].count('\n')
+                    var = self._use_var_p.findall(lines, start + 5, pos + 1)
+                    var = [a for a in var if a not in _GAP_KEYWORDS]
+                    var = ' '.join(var)
+                    replacement = ('rec('
+                                   + var
+                                   + '\n' * nr_newlines
+                                   + ')')
+                    lines = lines[:start + 1] + replacement + lines[pos + 1:]
+                    pos -= pos - start
+                    pos += len(replacement)
+            pos += 1
+        assert len(stack) == 0
+        return lines
+
+    def _start_function(self, fname, lines, pos, nr_warnings):
+        self._depth += 1
+
+        assert self._depth == len(self._func_args)
+        assert self._depth == len(self._declared_lvars)
+        assert self._depth == len(self._assigned_lvars)
+        assert self._depth == len(self._used_lvars)
+        assert self._depth == len(self._func_start_pos)
+
+        self._func_args.append(set())
+        self._declared_lvars.append(set())
+        self._assigned_lvars.append(set())
+        self._used_lvars.append(set())
+        self._func_start_pos.append(pos)
+
+        start = lines.find('(', pos) + 1
+        end = lines.find(')', start)
+        new_args = self._var_p.findall(lines, start, end)
+        args = self._func_args[self._depth]
+
+        for var in new_args:
+            if var in args:
+                _exit_abort('duplicate function argument: %s' % var)
+            elif var in _GAP_KEYWORDS:
+                _exit_abort('function argument is keyword: %s' % var)
             else:
-                nr_matches += 1
-        if nr_matches > 0:
-            msg = self._warning_msg
-        return RuleOutput(line, msg, False)
+                args.add(var)
+        return end + 1, nr_warnings
 
-    def skip(self, ext):
-        return self._skip(ext)
+    def _end_function(self, fname, lines, pos, nr_warnings):
+        if len(self._declared_lvars) == 0:
+            _exit_abort('\'end\' outside function')
+
+        self._depth -= 1
+
+        ass_lvars = self._assigned_lvars.pop()
+        decl_lvars = self._declared_lvars.pop()
+        use_lvars = self._used_lvars.pop()
+
+        if len(self._used_lvars) > 0:
+            self._used_lvars[-1] |= use_lvars  # union
+
+        ass_lvars -= use_lvars   # difference
+        ass_lvars &= decl_lvars  # intersection
+        decl_lvars -= ass_lvars  # difference
+        decl_lvars -= use_lvars  # difference
+
+        if len(ass_lvars) != 0:
+            ass_lvars = [key for key in ass_lvars if key.find('.') == -1]
+            msg = 'variables assigned but never used: '
+            msg += reduce(lambda x, y: x + ', ' + y, ass_lvars[1:],
+                          ass_lvars[0])
+            _info_warn_file(fname, lines, self._func_start_pos[-1], msg)
+            nr_warnings += 1
+
+        if len(decl_lvars) != 0:
+            decl_lvars = [key for key in decl_lvars]
+            msg = 'unused local variables: '
+            msg += reduce(lambda x, y: x + ', ' + y,
+                          decl_lvars[1:],
+                          decl_lvars[0])
+            _info_warn_file(fname, lines, self._func_start_pos[-1], msg)
+            nr_warnings += 1
+
+        self._func_args.pop()  # TODO do something with these
+        self._func_start_pos.pop()
+        return pos + len('end'), nr_warnings
+
+    def _add_declared_lvars(self, fname, lines, pos, nr_warnings):
+        end = lines.find(';', pos)
+        lvars = self._declared_lvars[self._depth]
+        args = self._func_args[self._depth]
+
+        new_lvars = self._var_p.findall(lines, pos, end)
+        for var in new_lvars:
+            if var in lvars:
+                _exit_abort('name used for two locals: ' + var)
+            elif var in args:
+                _exit_abort('name used for argument and local: ' + var)
+            elif var in _GAP_KEYWORDS:
+                _exit_abort('local is keyword: ' + var)
+            else:
+                lvars.add(var)
+        return end, nr_warnings
+
+    def _find_lvars(self, fname, lines, pos, nr_warnings):
+        end = self._end_p.search(lines, pos + 1)
+        func = self._function_p.search(lines, pos + 1)
+        if end is None and func is None:
+            return len(lines), nr_warnings
+        elif end is None and func is not None:
+            _exit_abort('function without end')
+
+        if (func is not None and end is not None
+                and func.start() < end.start()):
+            end = func.start()
+        else:
+            assert end is not None
+            end = end.start()
+        if self._depth >= 0:
+            a_lvars = self._assigned_lvars[self._depth]
+            a_lvars |= set(self._ass_var_p.findall(lines, pos, end))
+            u_lvars = self._used_lvars[self._depth]
+            u_lvars |= set(self._use_var_p.findall(lines, pos, end))
+        return end, nr_warnings
+
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        if _is_tst_or_xml_file(fname):
+            return nr_warnings, lines
+        orig_lines = lines[:]
+        lines = self._remove_recs_and_whitespace(lines)
+        pos = 0
+        while pos < len(lines):
+            if self._function_p.search(lines, pos, pos + len('function')):
+                pos, nr_warnings = self._start_function(fname,
+                                                        lines,
+                                                        pos,
+                                                        nr_warnings)
+            elif self._local_p.search(lines, pos, pos + len('local') + 1):
+                pos, nr_warnings = self._add_declared_lvars(fname,
+                                                            lines,
+                                                            pos
+                                                            + len('local') + 1,
+                                                            nr_warnings)
+            elif self._end_p.search(lines, pos, pos + len('end')):
+                pos, nr_warnings = self._end_function(fname,
+                                                      lines,
+                                                      pos,
+                                                      nr_warnings)
+            else:
+                pos, nr_warnings = self._find_lvars(fname,
+                                                    lines,
+                                                    pos,
+                                                    nr_warnings)
+
+        return nr_warnings, orig_lines
+
+###############################################################################
+# Line rules
+###############################################################################
 
 
-class WhitespaceOperator(WarnRegex):
+class LineTooLong(Rule):
+    '''
+    Warn if the length of a line exceeds 80 characters.
+
+    This rule does not modify the line.
+    '''
+    def __init__(self, name=None, code=None):
+        Rule.__init__(self, name, code)
+        self._cols = _GLOB_CONFIG['columns']
+
+    def __call__(self, fname, lines, linenum, nr_warnings=0):
+        if _is_tst_or_xml_file(fname):
+            return nr_warnings, lines
+        if len(lines[linenum]) - 1 > self._cols:
+            _info_warn_line(fname,
+                            lines,
+                            linenum,
+                            'too long line (%d / %d)'
+                            % (len(lines[linenum]) - 1, self._cols))
+            nr_warnings += 1
+        return nr_warnings, lines
+
+
+class WarnRegexLine(WarnRegexBase):
+    def __call__(self, fname, lines, linenum, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, list)
+        assert isinstance(linenum, int)
+        assert linenum < len(lines)
+        assert isinstance(nr_warnings, int)
+        if not self.skip(fname):
+            if self._match(lines[linenum]) is not None:
+                _info_warn_line(fname, lines, linenum, self._warning_msg)
+                return nr_warnings + 1, lines
+        return nr_warnings, lines
+
+
+class WhitespaceOperator(WarnRegexLine):
     '''
     Instances of this class produce a warning whenever the whitespace around an
     operator is incorrect.
     '''
     def __init__(self, name, code, op, exceptions=[]):
-        # pylint: disable=bad-builtin, deprecated-lambda, unnecessary-lambda
-        WarnRegex.__init__(self, name, code, '', '')
+        WarnRegexLine.__init__(self, name, code, '', '')
         assert isinstance(op, str)
         assert op[0] != '(' and op[-1] != ')'
         assert exceptions is None or isinstance(exceptions, list)
-        assert reduce(lambda x, y: x and isinstance(y, str), exceptions, True)
+        assert all(isinstance(e, str) for e in exceptions)
         gop = '(' + op + ')'
         pattern = (r'(\S' + gop + '|' + gop + r'\S|\s{2,}' + gop +
                    '|' + gop + r'\s{2,})')
@@ -469,6 +669,37 @@ class WhitespaceOperator(WarnRegex):
         self._exception_group = op.replace('\\', '')
 
 
+class UnalignedPatterns(Rule):
+    '''
+    This rule checks if pattern occurs in consecutive lines and that they are
+    aligned.
+    '''
+    def __init__(self, name, code, pattern, msg):
+        assert isinstance(pattern, str)
+        assert isinstance(msg, str)
+        Rule.__init__(self, name, code)
+        self._last_line_col = None
+        self._pattern = re.compile(pattern)
+        self._msg = msg
+
+    def __call__(self, fname, lines, linenum, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, list)
+        assert isinstance(linenum, int)
+        assert isinstance(nr_warnings, int)
+        if (_is_rule_suppressed(fname, linenum, self)
+                or _is_tst_or_xml_file(fname)
+                or linenum == 0):
+            return nr_warnings, lines
+        col = self._pattern.search(lines[linenum])
+        if (col is not None and self._last_line_col is not None):
+            if col.start() != self._last_line_col.start():
+                _info_warn_line(fname, lines, linenum, self._msg)
+                return nr_warnings + 1, lines
+        self._last_line_col = col
+        return nr_warnings, lines
+
+
 class Indentation(Rule):
     '''
     This class checks that the indentation level is correct in a given line.
@@ -479,7 +710,7 @@ class Indentation(Rule):
     '''
     def __init__(self, name, code):
         Rule.__init__(self, name, code)
-        ind = _get_glob_config('indentation')
+        ind = _GLOB_CONFIG['indentation']
         self._expected = 0
         self._before = [(re.compile(r'(\W|^)(elif|else)(\W|$)'), -ind),
                         (re.compile(r'(\W|^)end(\W|$)'), -ind),
@@ -488,27 +719,40 @@ class Indentation(Rule):
         self._after = [(re.compile(r'(\W|^)(then|do)(\W|$)'), -ind),
                        (re.compile(r'(\W|^)(repeat|else)(\W|$)'), ind),
                        (re.compile(r'(\W|^)function(\W|$)'), ind),
-                       (re.compile(r'(\W|^)(if|for|while|elif)(\W|$)'), 2*ind)]
+                       (re.compile(r'(\W|^)(if|for|while|elif|atomic)(\W|$)'),
+                        2*ind)]
         self._indent = re.compile(r'^(\s*)\S')
         self._blank = re.compile(r'^\s*$')
+        self._msg = 'bad indentation: found %d but expected at least %d'
 
-    def __call__(self, line):
+    def __call__(self, fname, lines, linenum, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, list)
+        assert isinstance(linenum, int)
+        assert isinstance(nr_warnings, int)
         assert self._expected >= 0
-        ro = RuleOutput(line)
-        if self._blank.search(line):
-            return ro
+
+        if (_is_rule_suppressed(fname, linenum, self)
+                or _is_tst_or_xml_file(fname)
+                or self._blank.search(lines[linenum])):
+            return nr_warnings, lines
+
         for pair in self._before:
-            if pair[0].search(line):
+            if pair[0].search(lines[linenum]):
                 self._expected += pair[1]
 
-        if self._get_indent_level(line) < self._expected:
-            ro.msg = ('bad indentation: found ' +
-                      str(self._get_indent_level(line)) +
-                      ' expected at least ' + str(self._expected))
+        indent = self._get_indent_level(lines[linenum])
+        if indent < self._expected:
+            _info_warn_line(fname,
+                            lines,
+                            linenum,
+                            self._msg % (indent, self._expected))
+            nr_warnings += 1
+
         for pair in self._after:
-            if pair[0].search(line):
+            if pair[0].search(lines[linenum]):
                 self._expected += pair[1]
-        return ro
+        return nr_warnings, lines
 
     def _get_indent_level(self, line):
         indent = self._indent.search(line)
@@ -517,182 +761,6 @@ class Indentation(Rule):
 
     def reset(self):
         self._expected = 0
-
-    def skip(self, ext):
-        return _skip_tst_or_xml_file(ext)
-
-
-class ConsecutiveEmptyLines(WarnRegex):
-    '''
-    This rule checks if there are consecutive empty lines in a file.
-    '''
-    def __init__(self, name, code):
-        WarnRegex.__init__(self,
-                           name,
-                           code,
-                           r'^\s*$',
-                           'consecutive empty lines!')
-        self._prev_line_empty = False
-
-    def __call__(self, line):
-        ro = WarnRegex.__call__(self, line)
-        if ro.msg:
-            if not self._prev_line_empty:
-                self._prev_line_empty = True
-                ro.msg = None
-        else:
-            self._prev_line_empty = False
-        return ro
-
-    def reset(self):
-        self._prev_line_empty = False
-
-
-class UnusedLVarsFunc(Rule):  # pylint: disable=too-many-instance-attributes
-    '''
-    This rule checks if there are unused local variables in a function.
-    '''
-    def __init__(self, name=None, code=None):
-        Rule.__init__(self, name, code)
-        self._consuming_args = False
-        self._consuming_lvars = False
-        self._depth = -1
-        self._args = []
-        self._lvars = []
-        self._function_p = re.compile(r'(^|\W)(function)(\W)')
-        self._end_p = re.compile(r'(^|\W)end\W')
-        self._local_p = re.compile(r'(^|\W)(local)(\W)')
-        self._var_p = re.compile(r'\w+')
-        self._keywords = {'true', 'false', 'continue', 'break', 'if', 'fi',
-                          'else', 'for', 'od', 'while', 'repeat', 'until',
-                          'return', '__REMOVED_STRING__', '__REMOVED_CHAR__'}
-
-    def reset(self):
-        self._consuming_args = False
-        self._consuming_lvars = False
-        self._depth = -1
-        self._args = []
-        self._lvars = []
-
-    def _is_function_declared(self, line):
-        return self._function_p.search(line)
-
-    def _is_end_declared(self, line):
-        return self._end_p.search(line)
-
-    def _is_local_declared(self, line):
-        return self._local_p.search(line)
-
-    def _add_function_args(self, line, start=0, end=-1):
-        ro = RuleOutput(line)
-        new_args = self._var_p.findall(line, start, end)
-        args = self._args[self._depth]
-        for var in new_args:
-            if var in args:
-                ro.msg = 'duplicate function argument: ' + var
-                ro.abort = True
-            elif var in self._keywords:
-                ro.msg = 'function argument is keyword: ' + var
-                ro.abort = True
-            else:
-                args.add(var)
-        self._consuming_args = (line.find(')', start) == -1)
-        return ro
-
-    def _new_function(self, line):
-        m = self._function_p.search(line)
-        assert m
-        assert not self._consuming_args and not self._consuming_lvars
-        self._depth += 1
-        assert self._depth == len(self._args)
-        assert self._depth == len(self._lvars)
-        self._lvars.append(set())
-        self._args.append(set())
-        start = line.find('(', m.start(3)) + 1
-        end = line.find(')', start)
-        if end == -1:
-            self._consuming_args = True
-        return self._add_function_args(line, start, end)
-
-    def _end_function(self, line):
-        assert self._end_p.search(line)
-        assert not self._consuming_args and not self._consuming_lvars
-
-        ro = RuleOutput(line)
-        if len(self._lvars) == 0:
-            ro.msg = '\'end\' outside function'
-            ro.abort = True
-            return ro
-
-        self._depth -= 1
-        lvars = [key for key in self._lvars.pop()]
-        self._args.pop()
-        # if the next line is uncommented then remove the previous line
-        # args = [key for key in self._args.pop()]
-        # TODO should use the number of the line where function declared
-        if len(lvars) != 0:
-            ro.msg = 'unused local variables: '
-            ro.msg += reduce(lambda x, y: x + ', ' + y, lvars[1:], lvars[0])
-        # TODO the following produces too many warnings, there are plenty of
-        # places where there are legitimately unused function arguments
-        # if len(args) != 0:
-        #     ro.msg = 'unused function arguments: '
-        #     ro.msg += reduce(lambda x, y: x + ', ' + y, args[1:], args[0])
-        return ro
-
-    def _add_lvars(self, line):
-        ro = RuleOutput(line)
-        end = line.find(';')
-        self._consuming_lvars = (end == -1)
-        lvars = self._lvars[self._depth]
-        args = self._args[self._depth]
-        new_lvars = self._var_p.findall(line, 0, end)
-        for var in new_lvars:
-            if var in lvars:
-                ro.msg = 'name used for two locals: ' + var
-                ro.abort = True
-            elif var in args:
-                ro.msg = 'name used for argument and local: ' + var
-                ro.abort = True
-            elif var in self._keywords:
-                ro.msg = 'local is keyword: ' + var
-                ro.abort = True
-            elif var != 'local':
-                lvars.add(var)
-        return ro
-
-    def _remove_lvars(self, line):
-        ro = RuleOutput(line)
-        lvars = self._var_p.findall(line)
-        for var in lvars:
-            for depth in xrange(0, self._depth + 1):
-                self._lvars[depth].discard(var)
-                self._args[depth].discard(var)
-            # could detect unbound globals here (maybe)
-        return ro
-
-    def __call__(self, line):
-        ro = RuleOutput(line)
-        if self._is_function_declared(line):
-            ro = self._new_function(line)
-            if not ro.msg and self._is_end_declared(line):
-                ro = self._remove_lvars(line)
-                ro = self._end_function(line)
-        elif self._is_local_declared(line) or self._consuming_lvars:
-            ro = self._add_lvars(line)
-            if not ro.msg and self._is_end_declared(line):
-                ro = self._remove_lvars(line)
-                ro = self._end_function(line)
-        elif self._is_end_declared(line):
-            ro = self._end_function(line)
-        elif self._consuming_args:
-            ro = self._add_function_args(line, 0, line.find(')'))
-        elif self._depth >= 0:
-            ro = self._remove_lvars(line)
-        return ro
-
-    def skip(self, ext):
-        return _skip_tst_or_xml_file(ext)
 
 ###############################################################################
 # Functions for running this as a script instead of a module
@@ -718,6 +786,7 @@ def _parse_args(kwargs):
     parser.add_argument('--disable', nargs='?', type=str, help='gaplint rules '
                         + '(name or code) to disable (default: None)')
     parser.set_defaults(disable='')
+    # TODO an --enable option to enable only the specified rules
 
     parser.add_argument('--indentation', nargs='?', type=int,
                         help='indentation of nested statements (default: 2)')
@@ -744,17 +813,17 @@ def _parse_args(kwargs):
         _VERBOSE = args.verbose
 
     # Reset the config and suppressions
-    global __GLOB_CONFIG, __GLOB_SUPPRESSIONS, __FILE_SUPPRESSIONS
-    global __LINE_SUPPRESSIONS
-    __GLOB_CONFIG = __DEFAULT_CONFIG.copy()
-    __GLOB_SUPPRESSIONS = {}
-    __FILE_SUPPRESSIONS = {}
-    __LINE_SUPPRESSIONS = {}
+    global _GLOB_CONFIG, _GLOB_SUPPRESSIONS, _FILE_SUPPRESSIONS
+    global _LINE_SUPPRESSIONS
+    _GLOB_CONFIG = _DEFAULT_CONFIG.copy()
+    _GLOB_SUPPRESSIONS = {}
+    _FILE_SUPPRESSIONS = {}
+    _LINE_SUPPRESSIONS = {}
 
     # The following are only for when this is called as a function after
     # importing gaplint in python, rather than when running as a script
     args.config = {}
-    for key in __GLOB_CONFIG:
+    for key in _GLOB_CONFIG:
         if key in args:
             args.config[key] = getattr(args, key)
         if key in kwargs:
@@ -796,11 +865,11 @@ def __init_config_and_suppressions_command_line(args):
 
     for key in args.config:
         if key != 'disable' and args.config[key] is not None:
-            __GLOB_CONFIG[key] = args.config[key]
+            _GLOB_CONFIG[key] = args.config[key]
 
     names_or_codes = args.config['disable'].split(',')
     for name_or_code in names_or_codes:
-        __GLOB_SUPPRESSIONS[name_or_code] = None
+        _GLOB_SUPPRESSIONS[name_or_code] = None
 
 
 def __config_yml_path(dir_path):
@@ -848,12 +917,14 @@ def __init_config_and_suppressions_yml():
         _info_action('IGNORING %s: error parsing YAML' % config_yml_fname)
         return
 
+    if ymldic is None:
+        return
     for key in ymldic:
-        if key not in __GLOB_CONFIG and key != 'disable':
+        if key not in _GLOB_CONFIG and key != 'disable':
             _info_action('IGNORING unknown configuration value \'%s\' in %s'
                          % (key, config_yml_fname))
         elif key != 'disable':
-            __GLOB_CONFIG[key] = ymldic[key]
+            _GLOB_CONFIG[key] = ymldic[key]
         else:
             if not isinstance(ymldic[key], list):
                 _info_action('IGNORING %s: badly formed field \'disable\''
@@ -861,7 +932,7 @@ def __init_config_and_suppressions_yml():
             else:
                 for name_or_code in ymldic[key]:
                     if isinstance(name_or_code, str):
-                        __GLOB_SUPPRESSIONS[name_or_code] = None
+                        _GLOB_SUPPRESSIONS[name_or_code] = None
                     else:
                         _info_action('IGNORING bad value %s in field'
                                      % name_or_code
@@ -869,13 +940,13 @@ def __init_config_and_suppressions_yml():
 
 
 def __verify_glob_suppressions():
-    global __GLOB_SUPPRESSIONS  # pylint: disable=global-variable-not-assigned
+    global _GLOB_SUPPRESSIONS  # pylint: disable=global-variable-not-assigned
     delete = []
-    for name_or_code in __GLOB_SUPPRESSIONS:
+    for name_or_code in _GLOB_SUPPRESSIONS:
         if name_or_code == 'all' or name_or_code == '':
             continue
         ok = False
-        for rule in RULES:
+        for rule in _LINE_RULES:
             if name_or_code == rule.name or name_or_code == rule.code:
                 if rule.code[0] == 'M':
                     _info_action('IGNORING cannot disable rule: %s'
@@ -887,7 +958,7 @@ def __verify_glob_suppressions():
             delete.append(name_or_code)
 
     for name_or_code in delete:
-        del __GLOB_SUPPRESSIONS[name_or_code]
+        del _GLOB_SUPPRESSIONS[name_or_code]
         config_yml_fname = __config_yml_path(os.getcwd())
         msg = 'IGNORING in command line '
         if config_yml_fname is not None:
@@ -902,74 +973,149 @@ def __verify_glob_suppressions():
 
 
 def __init_rules():
-    global _REMOVE_PREFIX, RULES
-    _REMOVE_PREFIX = RemovePrefix()
-    RULES = [LineTooLong('line-too-long', 'W001'),
-             ConsecutiveEmptyLines('empty-lines', 'W002'),
-             WarnRegex('trailing-whitespace', 'W003', r'^.*\s+\n$',
-                       'trailing whitespace!', [], _skip_tst_or_xml_file),
-             RemoveComments('remove-comments', 'M001'),
-             ReplaceMultilineStrings('replace-multiline-strings', 'M002'),
-             ReplaceQuotes('replace-double-quotes', 'M003', '"',
-                           '__REMOVED_STRING__'),
-             ReplaceQuotes('replace-char', 'M004', '\'',
-                           '__REMOVED_CHAR__'),
-             Indentation('indentation', 'W004'),
-             WarnRegex('space-after-comma', 'W005',
-                       r',(([^,\s]+)|(\s{2,})\w)',
-                       'exactly one space required after comma'),
-             WarnRegex('space-before-comma', 'W006', r'\s,',
-                       'no space before comma'),
-             WarnRegex('space-after-bracket', 'W007',
-                       r'(\(|\[|\{)[ \t\f\v]',
-                       'no space allowed after bracket'),
-             WarnRegex('space-before-bracket', 'W008', r'\s(\)|\]|\})',
-                       'no space allowed before bracket'),
-             WarnRegex('multiple-semicolons', 'W009', r';.*;',
-                       'more than one semicolon!', [], _skip_tst_or_xml_file),
-             WarnRegex('keyword-function', 'W010',
-                       r'(\s|^)function[^\(]',
-                       'keyword function not followed by ('),
-             WarnRegex('whitespace-op-assign', 'W011',
-                       r'(\S:=|:=(\S|\s{2,}))',
-                       'wrong whitespace around operator :='),
-             WarnRegex('tabs', 'W012', r'\t',
-                       'there are tabs in this line, replace with spaces!'),
-             WarnRegex('function-local-same-line', 'W013',
-                       r'function\W.*\Wlocal\W',
-                       'keywords function and local in the same line'),
-             WhitespaceOperator('whitespace-op-plus', 'W014',
-                                r'\+', [r'^\s*\+']),
-             WhitespaceOperator('whitespace-op-multiply', 'W015',
-                                r'\*', [r'^\s*\*', r'\\\*']),
-             WhitespaceOperator('whitespace-op-negative', 'W016',
-                                r'-', [r'-(>|\[)', r'(\^|\*|,|=|\.|>) -',
+    global _FILE_RULES, _LINE_RULES
+    _FILE_RULES = [ReplaceAnnoyUTF8Chars('replace-weird-chars', 'M000'),
+                   ReplaceOutputTstOrXMLFile('replace-output-tst-or-xml-file',
+                                             'M001'),
+                   ReplaceComments('replace-comments', 'M002'),
+                   ReplaceBetweenDelimiters('replace-multiline-strings',
+                                            'M003',
+                                            r'"""',
+                                            r'"""'),
+                   ReplaceBetweenDelimiters('replace-strings',
+                                            'M004',
+                                            r'"',
+                                            r'"'),
+                   ReplaceBetweenDelimiters('replace-chars',
+                                            'M005',
+                                            r"'",
+                                            r"'"),
+                   AnalyseLVars('analyse-lvars', 'W000'),
+                   WarnRegexFile('consecutive-empty-lines',
+                                 'W001',
+                                 r'\n\s*\n\s*\n',
+                                 'consecutive empty lines!')]
+    _LINE_RULES = [LineTooLong('line-too-long', 'W002'),
+                   Indentation('indentation', 'W003'),
+                   UnalignedPatterns('align-assignments',
+                                     'W004',
+                                     r':=',
+                                     'unaligned assignments in '
+                                     + 'consecutive lines'),
+                   UnalignedPatterns('align-comments',
+                                     'W005',
+                                     r'\W.*#',
+                                     'unaligned comments in '
+                                     + 'consecutive lines'),
+                   WarnRegexLine('trailing-whitespace',
+                                 'W006',
+                                 r'\s+$',
+                                 'trailing whitespace!'),
+                   WarnRegexLine('no-space-after-comment',
+                                 'W007',
+                                 r'#+[^ \t\n\r\f\v#]',
+                                 'no space after comment!'),
+                   WarnRegexLine('not-enough-space-before-comment',
+                                 'W008',
+                                 r'[^ \t\n\r\f\v#]\s?#',
+                                 'at least 2 spaces before comment'),
+                   WarnRegexLine('space-after-comma',
+                                 'W009',
+                                 r',(([^,\s]+)|(\s{2,})\w)',
+                                 'exactly one space required after comma'),
+                   WarnRegexLine('space-before-comma',
+                                 'W010',
+                                 r'\s,',
+                                 'no space before comma'),
+                   WarnRegexLine('space-after-bracket',
+                                 'W011',
+                                 r'(\(|\[|\{)[ \t\f\v]',
+                                 'no space allowed after bracket'),
+                   WarnRegexLine('space-before-bracket',
+                                 'W012',
+                                 r'\s(\)|\]|\})',
+                                 'no space allowed before bracket'),
+                   WarnRegexLine('multiple-semicolons',
+                                 'W013',
+                                 r';.*;',
+                                 'more than one semicolon!',
+                                 [],
+                                 _is_tst_or_xml_file),
+                   WarnRegexLine('keyword-function',
+                                 'W014',
+                                 r'(\s|^)function[^\(]',
+                                 'keyword function not followed by ('),
+                   WarnRegexLine('whitespace-op-assign',
+                                 'W015',
+                                 r'(\S:=|:=(\S|\s{2,}))',
+                                 'wrong whitespace around operator :='),
+                   WarnRegexLine('tabs',
+                                 'W016',
+                                 r'\t',
+                                 'there are tabs in this line, '
+                                 + 'replace with spaces!'),
+                   WarnRegexLine('function-local-same-line',
+                                 'W017',
+                                 r'function\W.*\Wlocal\W',
+                                 'keywords function and local in the ' +
+                                 'same line'),
+                   WarnRegexLine('whitespace-op-minus',
+                                 'W018',
+                                 r'(return|\^|\*|,|=|\.|>) - \d',
+                                 'wrong whitespace around operator -'),
+                   WhitespaceOperator('whitespace-op-plus',
+                                      'W019',
+                                      r'\+',
+                                      [r'^\s*\+']),
+                   WhitespaceOperator('whitespace-op-multiply',
+                                      'W020',
+                                      r'\*',
+                                      [r'^\s*\*', r'\\\*']),
+                   WhitespaceOperator('whitespace-op-negative',
+                                      'W021',
+                                      r'-',
+                                      [r'-(>|\[)',
+                                       r'(\^|\*|,|=|\.|>) -',
                                        r'(\(|\[)-',
                                        r'return -infinity',
                                        r'return -\d']),
-             WarnRegex('whitespace-op-minus', 'W017',
-                       r'(return|\^|\*|,|=|\.|>) - \d',
-                       'wrong whitespace around operator -'),
-             WhitespaceOperator('whitespace-op-less-than', 'W018',
-                                r'\<', [r'^\s*\<', r'\<(\>|=)', r'\\\<']),
-             WhitespaceOperator('whitespace-op-less-equal', 'W019',
-                                r'\<='),
-             WhitespaceOperator('whitespace-op-more-than', 'W020', r'\>',
-                                [r'(-|\<)\>', r'\>=']),
-             WhitespaceOperator('whitespace-op-more-equal', 'W021',
-                                r'\>='),
-             WhitespaceOperator('whitespace-op-equals', 'W022', r'=',
-                                [r'(:|>|<)=', r'^\s*=', r'\\=']),
-             WhitespaceOperator('whitespace-op-mapping', 'W023', r'->'),
-             WhitespaceOperator('whitespace-op-divide', 'W024', r'\/',
-                                [r'\\\/']),
-             WhitespaceOperator('whitespace-op-power', 'W025', r'\^',
-                                [r'^\s*\^', r'\\\^']),
-             WhitespaceOperator('whitespace-op-not-equal', 'W026',
-                                r'<>', [r'^\s*<>']),
-             WhitespaceOperator('whitespace-double-dot', 'W027', r'\.\.',
-                                [r'\.\.(\.|\))']),
-             UnusedLVarsFunc('unused-local-variables', 'W028')]
+                   WhitespaceOperator('whitespace-op-less-than',
+                                      'W022',
+                                      r'\<',
+                                      [r'^\s*\<', r'\<(\>|=)', r'\\\<']),
+                   WhitespaceOperator('whitespace-op-less-equal',
+                                      'W023',
+                                      r'\<='),
+                   WhitespaceOperator('whitespace-op-more-than',
+                                      'W024',
+                                      r'\>',
+                                      [r'(-|\<)\>', r'\>=']),
+                   WhitespaceOperator('whitespace-op-more-equal',
+                                      'W025',
+                                      r'\>='),
+                   WhitespaceOperator('whitespace-op-equals',
+                                      'W026',
+                                      r'=',
+                                      [r'(:|>|<)=', r'^\s*=', r'\\=']),
+                   WhitespaceOperator('whitespace-op-lambda',
+                                      'W027',
+                                      r'->'),
+                   WhitespaceOperator('whitespace-op-divide',
+                                      'W028',
+                                      r'\/',
+                                      [r'\\\/']),
+                   WhitespaceOperator('whitespace-op-power',
+                                      'W029',
+                                      r'\^',
+                                      [r'^\s*\^', r'\\\^']),
+                   WhitespaceOperator('whitespace-op-not-equal',
+                                      'W030',
+                                      r'<>',
+                                      [r'^\s*<>']),
+                   WhitespaceOperator('whitespace-double-dot',
+                                      'W031',
+                                      r'\.\.',
+                                      [r'\.\.(\.|\))'])]
 
 ###############################################################################
 # File and line suppressions - run after defining RULES
@@ -980,7 +1126,7 @@ def __is_valid_rule_name_or_code(name_or_code, fname, linenum):
     # TODO assertions
     if name_or_code == 'all':
         return True
-    for rule in RULES:
+    for rule in _LINE_RULES:
         if name_or_code == rule.name or name_or_code == rule.code:
             if rule.code[0] == 'M':
                 _info_action('IGNORING cannot disable rule: %s'
@@ -1001,9 +1147,9 @@ def __add_file_suppressions(names_or_codes, fname, linenum):
         if __is_valid_rule_name_or_code(name_or_code,
                                         fname,
                                         linenum):
-            if fname not in __FILE_SUPPRESSIONS:
-                __FILE_SUPPRESSIONS[fname] = {}
-            __FILE_SUPPRESSIONS[fname][name_or_code] = None
+            if fname not in _FILE_SUPPRESSIONS:
+                _FILE_SUPPRESSIONS[fname] = {}
+            _FILE_SUPPRESSIONS[fname][name_or_code] = None
 
 
 def __add_line_suppressions(names_or_codes, fname, linenum):
@@ -1015,13 +1161,15 @@ def __add_line_suppressions(names_or_codes, fname, linenum):
         if __is_valid_rule_name_or_code(name_or_code,
                                         fname,
                                         linenum):
-            if fname not in __LINE_SUPPRESSIONS:
-                __LINE_SUPPRESSIONS[fname] = {}
-            if linenum + 1 not in __LINE_SUPPRESSIONS[fname]:
-                __LINE_SUPPRESSIONS[fname][linenum + 1] = {}
-            __LINE_SUPPRESSIONS[fname][linenum + 1][name_or_code] = None
+            if fname not in _LINE_SUPPRESSIONS:
+                _LINE_SUPPRESSIONS[fname] = {}
+            if linenum + 1 not in _LINE_SUPPRESSIONS[fname]:
+                _LINE_SUPPRESSIONS[fname][linenum + 1] = {}
+            _LINE_SUPPRESSIONS[fname][linenum + 1][name_or_code] = None
 
 
+# FIXME this should be a line rule called before any other line rule, to avoid
+# reading the files more than once
 def __init_file_and_line_suppressions(args):
     assert isinstance(args, argparse.Namespace)
     assert hasattr(args, 'files')
@@ -1072,7 +1220,7 @@ def __init_file_and_line_suppressions(args):
             linenum += 1
 
 
-def __is_rule_suppressed(fname, linenum, rule):
+def _is_rule_suppressed(fname, linenum, rule):
     '''
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
@@ -1083,19 +1231,19 @@ def __is_rule_suppressed(fname, linenum, rule):
 
     if rule.code[0] == 'M':
         return False
-    elif ('all' in __GLOB_SUPPRESSIONS
-          or rule.code in __GLOB_SUPPRESSIONS
-          or rule.name in __GLOB_SUPPRESSIONS):
+    elif ('all' in _GLOB_SUPPRESSIONS
+          or rule.code in _GLOB_SUPPRESSIONS
+          or rule.name in _GLOB_SUPPRESSIONS):
         return True
-    elif (fname in __FILE_SUPPRESSIONS and
-          ('all' in __FILE_SUPPRESSIONS[fname]
-           or rule.code in __FILE_SUPPRESSIONS[fname]
-           or rule.name in __FILE_SUPPRESSIONS[fname])):
+    elif (fname in _FILE_SUPPRESSIONS and
+          ('all' in _FILE_SUPPRESSIONS[fname]
+           or rule.code in _FILE_SUPPRESSIONS[fname]
+           or rule.name in _FILE_SUPPRESSIONS[fname])):
         return True
-    elif (fname in __LINE_SUPPRESSIONS
-          and linenum in __LINE_SUPPRESSIONS[fname] and
-          (rule.code in __LINE_SUPPRESSIONS[fname][linenum]
-           or rule.name in __LINE_SUPPRESSIONS[fname][linenum])):
+    elif (fname in _LINE_SUPPRESSIONS
+          and linenum in _LINE_SUPPRESSIONS[fname] and
+          (rule.code in _LINE_SUPPRESSIONS[fname][linenum]
+           or rule.name in _LINE_SUPPRESSIONS[fname][linenum])):
         return True
     return False
 
@@ -1123,6 +1271,11 @@ def run_gaplint(**kwargs):
     '''
     args = _parse_args(kwargs)
 
+    if __debug__:
+        _info_verbose('Debug on . . .')
+    else:
+        _info_verbose('Debug off . . .')
+
     __init_config_and_suppressions_yml()
     __init_config_and_suppressions_command_line(args)
     __init_rules()
@@ -1130,45 +1283,39 @@ def run_gaplint(**kwargs):
     __init_file_and_line_suppressions(args)
 
     total_nr_warnings = 0
-    max_warnings = __GLOB_CONFIG['max_warnings']
+    max_warnings = _GLOB_CONFIG['max_warnings']
+
+    def too_many_warnings(nr_warnings):
+        if nr_warnings >= max_warnings:
+            if not _SILENT:
+                msg = 'FAILED with %d warnings!\n' % (nr_warnings)
+                sys.stderr.write(_red_string(msg))
+                _exit_abort('Too many warnings')
 
     for fname in args.files:
+        _info_verbose('Linting %s . . .' % fname)
         try:
             ffile = open(fname, 'r')
-            lines = ffile.readlines()
+            lines = ffile.read()
             ffile.close()
         except IOError:
             _info_action('SKIPPING ' + fname + ': cannot open for reading')
 
-        ext = fname.split('.')[-1]
         nr_warnings = 0
-        for i in xrange(len(lines)):
-            lines[i] = _REMOVE_PREFIX(lines[i], ext)
-            for rule in RULES:
-                is_rule_supp = __is_rule_suppressed(fname,
-                                                    i,
-                                                    rule)
-                if (not rule.skip(ext)) and (not is_rule_supp):
-                    try:
-                        ro = rule(lines[i])
-                    except AssertionError:
-                        sys.stdout.write(
-                            _red_string('Assertion in ' + fname +
-                                        ':' + str(i + 1)) + '\n')
-                        raise
-
-                    assert isinstance(ro, RuleOutput)
-                    if ro.msg:
-                        nr_warnings += 1
-                        _info_warn(fname, i, ro.msg, _pad(lines, i))
-                    if ro.abort:
-                        _exit_abort(str(total_nr_warnings + nr_warnings)
-                                    + ' warnings')
-                    lines[i] = ro.line
-                    if total_nr_warnings + nr_warnings >= max_warnings:
-                        _exit_abort('too many warnings')
-            _info_verbose(fname, i, lines[i], _pad(lines, i))
-        for rule in RULES:
+        for rule in _FILE_RULES:
+            # TODO can't suppress these so far
+            nr_warnings, lines = rule(fname, lines, nr_warnings)
+            too_many_warnings(nr_warnings + total_nr_warnings)
+        lines = lines.split('\n')
+        for linenum in xrange(len(lines)):
+            for rule in _LINE_RULES:
+                if not _is_rule_suppressed(fname, linenum, rule):
+                    nr_warnings, lines = rule(fname,
+                                              lines,
+                                              linenum,
+                                              nr_warnings)
+                    too_many_warnings(nr_warnings + total_nr_warnings)
+        for rule in _LINE_RULES:
             rule.reset()
         total_nr_warnings += nr_warnings
         if nr_warnings == 0:
@@ -1178,8 +1325,8 @@ def run_gaplint(**kwargs):
             sys.stderr.write(_red_string('FAILED with '
                                          + str(total_nr_warnings)
                                          + ' warnings!\n'))
-            if __name__ == '__main__':
-                sys.exit(1)
+        if __name__ == '__main__':
+            sys.exit(1)
     if __name__ == '__main__':
         sys.exit(0)
 

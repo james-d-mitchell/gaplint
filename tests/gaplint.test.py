@@ -40,27 +40,6 @@ class TestScript(unittest.TestCase):
         with self.assertRaises(SystemExit):
             gaplint._exit_abort('With a message')
 
-    def test_yellow_string(self):
-        with self.assertRaises(AssertionError):
-            gaplint._yellow_string(0)
-
-        self.assertEquals(gaplint._yellow_string('test'),
-                          '\033[33mtest\033[0m')
-
-    def test_neon_green_string(self):
-        with self.assertRaises(AssertionError):
-            gaplint._neon_green_string(0)
-
-        self.assertEquals(gaplint._neon_green_string('test'),
-                          '\033[40;38;5;82mtest\033[0m')
-
-    def test_orange_string(self):
-        with self.assertRaises(AssertionError):
-            gaplint._orange_string(0)
-
-        self.assertEquals(gaplint._orange_string('test'),
-                          '\033[40;38;5;208mtest\033[0m')
-
     def test_info_statement(self):
         gaplint._SILENT = False
         with self.assertRaises(AssertionError):
@@ -74,122 +53,102 @@ class TestScript(unittest.TestCase):
 
     def test_info_verbose(self):
         gaplint._SILENT, gaplint._VERBOSE = False, True
-        with self.assertRaises(AssertionError):
-            gaplint._info_verbose(0, 0, 0)
-        gaplint._info_verbose('test/tests.g', 0,'msg')
+        with self.assertRaises(TypeError):
+            gaplint._info_verbose('test/tests.g', 0, 'msg')
+        gaplint._info_verbose('message')
 
     def test_info_warn(self):
         gaplint._SILENT = False
         with self.assertRaises(AssertionError):
-            gaplint._info_warn(0, 0, 0, 0)
+            gaplint._info_warn_line(0, 0, 0, 0)
         with self.assertRaises(AssertionError):
-            gaplint._info_warn('test', 'test', 'test', 'test')
-        gaplint._info_warn('tests/test.g', 0, 'test', 0)
+            gaplint._info_warn_line('test', 'test', 'test', 'test')
+        gaplint._info_warn_line('fname', ['tests/test.g'], 0, 'message')
 
 class TestRules(unittest.TestCase):
-    def test_ReplaceMultilineStrings(self):
-        rule = gaplint.ReplaceMultilineStrings()
+    #def test_ReplaceMultilineStrings(self):
+    #    rule = gaplint.ReplaceMultilineStrings()
 
-        ro = rule('"""A multiline string in one line"""')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.line, '__REMOVED_MULTILINE_STRING__')
+    #    ro = rule('"""A multiline string in one line"""')
+    #    self.assertEquals(ro.line, '__REMOVED_MULTILINE_STRING__')
 
-        ro = rule('str := """A multiline string in several lines')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.line, 'str := __REMOVED_MULTILINE_STRING__')
+    #    ro = rule('str := """A multiline string in several lines')
+    #    self.assertEquals(ro.line, 'str := __REMOVED_MULTILINE_STRING__')
 
-        ro = rule('another line while we are consuming')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.line, '__REMOVED_MULTILINE_STRING__')
+    #    ro = rule('another line while we are consuming')
+    #    self.assertEquals(ro.line, '__REMOVED_MULTILINE_STRING__')
 
-        ro = rule('and another line"""')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.line, '__REMOVED_MULTILINE_STRING__')
+    #    ro = rule('and another line"""')
+    #    self.assertEquals(ro.line, '__REMOVED_MULTILINE_STRING__')
 
-    def test_ReplaceQuotes(self):
-        rule = gaplint.ReplaceQuotes(None, None, '"', '__REMOVED_STRING__')
+    #def test_ReplaceQuotes(self):
+    #    rule = gaplint.ReplaceQuotes(None, None, '"', '__REMOVED_STRING__')
 
-        ro = rule('x := "A string in one line"; y := 1;')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.line, 'x := __REMOVED_STRING__; y := 1;')
+    #    ro = rule('x := "A string in one line"; y := 1;')
+    #    self.assertEquals(ro.line, 'x := __REMOVED_STRING__; y := 1;')
 
-        ro = rule('"an unmatched quote')
-        assert isinstance(ro, gaplint.RuleOutput)
+    #    ro = rule('"an unmatched quote')
 
-        self.assertEquals(ro.msg, 'unmatched quote " in column 1')
-        self.assertEquals(ro.abort, True)
+    #    self.assertEquals(ro.msg, 'unmatched quote " in column 1')
+    #    self.assertEquals(ro.abort, True)
 
-        ro = rule(r'a := "a string containing escaped \"quotes\""; b := "\"2\"";')
-        self.assertEquals(ro.line, ('a := __REMOVED_STRING__;' +
-                                    ' b := __REMOVED_STRING__;'))
+    #    ro = rule(r'a := "a string containing escaped \"quotes\""; b := "\"2\"";')
+    #    self.assertEquals(ro.line, ('a := __REMOVED_STRING__;' +
+    #                                ' b := __REMOVED_STRING__;'))
 
-        ro = rule('"a good continuation\\\n')
-        self.assertEquals(ro.msg, None)
-        self.assertEquals(ro.abort, False)
-        ro = rule('and a bad continuation\n')
-        self.assertEquals(ro.msg, 'invalid continuation of string')
-        self.assertEquals(ro.abort, True)
+    #    ro = rule('"a good continuation\\\n')
+    #    self.assertEquals(ro.msg, None)
+    #    self.assertEquals(ro.abort, False)
+    #    ro = rule('and a bad continuation\n')
+    #    self.assertEquals(ro.msg, 'invalid continuation of string')
+    #    self.assertEquals(ro.abort, True)
 
-        rule._consuming=True
-        ro = rule('now on a new line')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.msg, 'invalid continuation of string')
-        self.assertEquals(ro.abort, True)
+    #    rule._consuming=True
+    #    ro = rule('now on a new line')
+    #    self.assertEquals(ro.msg, 'invalid continuation of string')
+    #    self.assertEquals(ro.abort, True)
 
-    def test_RemoveComments(self):
-        rule = gaplint.RemoveComments()
-        ro = rule(r"' before a #")
-        assert isinstance(ro, gaplint.RuleOutput)
-
-    def test_RemovePrefix(self):
-        rule = gaplint.RemovePrefix()
-        ro = rule('line does not start with gap> or >', 'tst')
+    def test_ReplaceOutputTstOrXMLFile(self):
+        rule = gaplint.ReplaceOutputTstOrXMLFile()
+        rule('fname', 'line does not start with gap> or >', 0)
         rule._consuming = True
-        ro = rule('line has neither prefix', 'tst')
+        rule('fname', 'line has neither prefix', 0)
 
-    def test_UnusedLVarsFunc(self):
-        rule = gaplint.UnusedLVarsFunc()
+    def test_AnalyseLVars(self):
+        rule = gaplint.AnalyseLVars()
 
-        ro = rule('function(x, x)')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.msg[:29], 'duplicate function argument: ')
-        self.assertEquals(ro.abort, True)
-
+        # duplicate params
+        with self.assertRaises(SystemExit):
+            rule('fname', 'function(x, x)', 0)
         rule.reset()
-        ro = rule('function(while)')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.msg[:30],'function argument is keyword: ')
-        self.assertEquals(ro.abort, True)
 
+        # keyword param
+        with self.assertRaises(SystemExit):
+            rule('fname', 'function(while)', 0)
         rule.reset()
-        ro = rule('f := function(x)')
-        ro = rule('local y, y;')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.msg[:26], 'name used for two locals: ')
-        self.assertEquals(ro.abort, True)
 
+        # duplicate locals
+        with self.assertRaises(SystemExit):
+            rule('fname', 'f := function(x)\nlocal y, y; end;', 0)
         rule.reset()
-        ro = rule('f := function(x)')
-        ro = rule('local x;')
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.msg[:34],'name used for argument and local: ')
-        self.assertEquals(ro.abort, True)
 
+        # param is local
+        with self.assertRaises(SystemExit):
+            rule('fname', 'f := function(x)\nlocal x; end;', 0)
         rule.reset()
-        ro = rule('f := function(x)')
-        ro = rule('local while;') # doesn't mind local local
-        assert isinstance(ro, gaplint.RuleOutput)
-        self.assertEquals(ro.msg[:18], 'local is keyword: ')
-        self.assertEquals(ro.abort, True)
 
+        # local is keyword
+        with self.assertRaises(SystemExit):
+            rule('fname', 'f := function(x)\nlocal while; end;', 0)
         rule.reset()
-        ro = rule('f := function(x,')
-        ro = rule('y)')
 
-        rule.reset()
-        ro = rule('f := function(x);')
-        ro = rule('local y')
-        ro = rule(', z; end;')
+        # function without end
+        with self.assertRaises(SystemExit):
+            rule('fname', 'f := function(x,\ny)', 0)
+
+        # end without function
+        with self.assertRaises(SystemExit):
+            rule('fname', 'end;', 0)
 
     def test_run_gaplint(self):
         with self.assertRaises(SystemExit):
@@ -199,11 +158,12 @@ class TestRules(unittest.TestCase):
         run_gaplint(files=['non-existant-file'])
         run_gaplint(files=['tests/test.g'], verbose=True)
 
+
 CONFIG_YAML_FILE = '''disable:
 - none
 - trailing-whitespace
-- remove-comments
 - M002
+- remove-comments
 indentation: 4
 max_warnings: 1000
 bananas: x'''
@@ -223,6 +183,8 @@ BAD_CONFIG_YAML_FILE_3 = '''disable:
     *0
     indettnatoatkajtkj = babnasnan
 '''
+
+EMPTY_YAML_FILE = ''
 
 
 class TestConfigYAMLFile(unittest.TestCase):
@@ -269,6 +231,11 @@ class TestConfigYAMLFile(unittest.TestCase):
 
     def test_disable_all_file_suppressions(self):
         run_gaplint(files=['tests/test4.g'], silent=True)
+
+    def test_empty_yaml(self):
+        self.write_config_yaml_file(EMPTY_YAML_FILE)
+        run_gaplint(files=['tests/test4.g'], silent=True)
+        self.rm_config_yaml_file()
 
 if __name__ == '__main__':
     unittest.main()
