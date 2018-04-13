@@ -1,4 +1,4 @@
-test: 
+check: 
 	python tests/gaplint.test.py
 
 coverage:
@@ -9,3 +9,9 @@ coverage:
 clean: 
 	rm -rf htmlcov
 	rm -f *.pyc
+	rm -f restats
+
+profile:
+	profile/profile.py
+
+.PHONY: profile
