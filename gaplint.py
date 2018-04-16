@@ -678,12 +678,14 @@ class UnalignedPatterns(Rule):
     This rule checks if pattern occurs in consecutive lines and that they are
     aligned.
     '''
-    def __init__(self, name, code, pattern, msg):
-        assert isinstance(pattern, str)
-        assert isinstance(msg, str)
+    def __init__(self, name, code, pattern, group, msg):
         Rule.__init__(self, name, code)
+        assert isinstance(pattern, str)
+        assert isinstance(group, int)
+        assert isinstance(msg, str)
         self._last_line_col = None
         self._pattern = re.compile(pattern)
+        self._group = group
         self._msg = msg
 
     def __call__(self, fname, lines, linenum, nr_warnings=0):
@@ -696,8 +698,9 @@ class UnalignedPatterns(Rule):
                 or linenum == 0):
             return nr_warnings, lines
         col = self._pattern.search(lines[linenum])
-        if (col is not None and self._last_line_col is not None):
-            if col.start() != self._last_line_col.start():
+        if col is not None and self._last_line_col is not None:
+            group = self._group
+            if col.start(group) != self._last_line_col.start(group):
                 _info_warn_line(fname, lines, linenum, self._msg)
                 return nr_warnings + 1, lines
         self._last_line_col = col
@@ -1004,79 +1007,87 @@ def __init_rules():
                    UnalignedPatterns('align-assignments',
                                      'W004',
                                      r':=',
+                                     0,
                                      'unaligned assignments in '
                                      + 'consecutive lines'),
-                   UnalignedPatterns('align-comments',
+                   UnalignedPatterns('align-trailing-comments',
                                      'W005',
-                                     r'\W.*#',
+                                     r'\w.*(#+)',
+                                     1,
+                                     'unaligned comments in '
+                                     + 'consecutive lines'),
+                   UnalignedPatterns('align-comments',
+                                     'W006',
+                                     r'^\s*(#+)',
+                                     1,
                                      'unaligned comments in '
                                      + 'consecutive lines'),
                    WarnRegexLine('trailing-whitespace',
-                                 'W006',
+                                 'W007',
                                  r'\s+$',
                                  'trailing whitespace!'),
                    WarnRegexLine('no-space-after-comment',
-                                 'W007',
+                                 'W008',
                                  r'#+[^ \t\n\r\f\v#]',
                                  'no space after comment!'),
                    WarnRegexLine('not-enough-space-before-comment',
-                                 'W008',
+                                 'W009',
                                  r'[^ \t\n\r\f\v#]\s?#',
                                  'at least 2 spaces before comment'),
                    WarnRegexLine('space-after-comma',
-                                 'W009',
+                                 'W010',
                                  r',(([^,\s]+)|(\s{2,})\w)',
                                  'exactly one space required after comma'),
                    WarnRegexLine('space-before-comma',
-                                 'W010',
+                                 'W011',
                                  r'\s,',
                                  'no space before comma'),
                    WarnRegexLine('space-after-bracket',
-                                 'W011',
+                                 'W012',
                                  r'(\(|\[|\{)[ \t\f\v]',
                                  'no space allowed after bracket'),
                    WarnRegexLine('space-before-bracket',
-                                 'W012',
+                                 'W013',
                                  r'\s(\)|\]|\})',
                                  'no space allowed before bracket'),
                    WarnRegexLine('multiple-semicolons',
-                                 'W013',
+                                 'W014',
                                  r';.*;',
                                  'more than one semicolon!',
                                  [],
                                  _is_tst_or_xml_file),
                    WarnRegexLine('keyword-function',
-                                 'W014',
+                                 'W015',
                                  r'(\s|^)function[^\(]',
                                  'keyword function not followed by ('),
                    WarnRegexLine('whitespace-op-assign',
-                                 'W015',
+                                 'W016',
                                  r'(\S:=|:=(\S|\s{2,}))',
                                  'wrong whitespace around operator :='),
                    WarnRegexLine('tabs',
-                                 'W016',
+                                 'W017',
                                  r'\t',
                                  'there are tabs in this line, '
                                  + 'replace with spaces!'),
                    WarnRegexLine('function-local-same-line',
-                                 'W017',
+                                 'W018',
                                  r'function\W.*\Wlocal\W',
                                  'keywords function and local in the ' +
                                  'same line'),
                    WarnRegexLine('whitespace-op-minus',
-                                 'W018',
+                                 'W019',
                                  r'(return|\^|\*|,|=|\.|>) - \d',
                                  'wrong whitespace around operator -'),
                    WhitespaceOperator('whitespace-op-plus',
-                                      'W019',
+                                      'W020',
                                       r'\+',
                                       [r'^\s*\+']),
                    WhitespaceOperator('whitespace-op-multiply',
-                                      'W020',
+                                      'W021',
                                       r'\*',
                                       [r'^\s*\*', r'\\\*']),
                    WhitespaceOperator('whitespace-op-negative',
-                                      'W021',
+                                      'W022',
                                       r'-',
                                       [r'-(>|\[)',
                                        r'(\^|\*|,|=|\.|>) -',
@@ -1084,40 +1095,40 @@ def __init_rules():
                                        r'return -infinity',
                                        r'return -\d']),
                    WhitespaceOperator('whitespace-op-less-than',
-                                      'W022',
+                                      'W023',
                                       r'\<',
                                       [r'^\s*\<', r'\<(\>|=)', r'\\\<']),
                    WhitespaceOperator('whitespace-op-less-equal',
-                                      'W023',
+                                      'W024',
                                       r'\<='),
                    WhitespaceOperator('whitespace-op-more-than',
-                                      'W024',
+                                      'W025',
                                       r'\>',
                                       [r'(-|\<)\>', r'\>=']),
                    WhitespaceOperator('whitespace-op-more-equal',
-                                      'W025',
+                                      'W026',
                                       r'\>='),
                    WhitespaceOperator('whitespace-op-equals',
-                                      'W026',
+                                      'W027',
                                       r'=',
                                       [r'(:|>|<)=', r'^\s*=', r'\\=']),
                    WhitespaceOperator('whitespace-op-lambda',
-                                      'W027',
+                                      'W028',
                                       r'->'),
                    WhitespaceOperator('whitespace-op-divide',
-                                      'W028',
+                                      'W029',
                                       r'\/',
                                       [r'\\\/']),
                    WhitespaceOperator('whitespace-op-power',
-                                      'W029',
+                                      'W030',
                                       r'\^',
                                       [r'^\s*\^', r'\\\^']),
                    WhitespaceOperator('whitespace-op-not-equal',
-                                      'W030',
+                                      'W031',
                                       r'<>',
                                       [r'^\s*<>']),
                    WhitespaceOperator('whitespace-double-dot',
-                                      'W031',
+                                      'W032',
                                       r'\.\.',
                                       [r'\.\.(\.|\))'])]
 

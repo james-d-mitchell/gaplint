@@ -18,33 +18,34 @@ to the start of the file before any lines that contain any code. All rules are e
 | `W002` | `line-too-long` | Warns if there is a line which is longer than the configured maximum (defaults to 80) |
 | `W003` | `indentation` | Warns if a line is under indented |
 | `W004` | `align-assignments` | Warns if there are assignments in consecutive lines that are not aligned|
-| `W005` | `align-comments` | Warns if there are comments in consecutive lines that are not aligned|
-| `W006` | `trailing-whitespace` | Warns if there is trailing whitespace at the end of a line |
-| `W007` | `no-space-after-comment` | Warns if there is no space after any number of # is a line |
-| `W008` | `not-enough-space-before-comment` | Warns if there is not enough space before the first # in any line (defaults to 2) |
-| `W009` | `space-after-comma` | Warns if a comma is followed by more than one space |
-| `W010` | `space-before-comma` | Warns if a comma is preceded by a space |
-| `W011` | `space-after-bracket` | Warns if there is a space after an opening bracket |
-| `W012` | `space-before-bracket` | Warns if there is a space before a closing bracket |
-| `W013` | `multiple-semicolons` | Warns if there is more than one semicolon in a line |
-| `W014` | `keyword-function` | Warns if the keyword *function* is not followed by an open bracket |
-| `W015` | `whitespace-op-assign` | Warns if there is not exactly one space after an assignment (:=) |
-| `W016` | `tabs` | Warns if there are tabs |
-| `W017` | `function-local-same-line` | Warns if the keywords *function* and *local* appear in the same line |
-| `W018` | `whitespace-op-minus` | Warns if there is not exactly one space either side of a minus (-) operator |
-| `W019` | `whitespace-op-plus` | Warns if there is not exactly one space either side of a plus (+) operator  |
-| `W020` | `whitespace-op-multiply` | Warns if there is not exactly one space either side of a multiply (\*) operator |
-| `W021` | `whitespace-op-negative` | Warns if there is not exactly one space preceding a negative (-) operator |
-| `W022` | `whitespace-op-less-than` | Warns if there is not exactly one space either side of a less-than (<) operator |
-| `W023` | `whitespace-op-less-equal` | Warns if there is not exactly one space either side of a less-than / equal-to (<=) operator |
-| `W024` | `whitespace-op-more-than` | Warns if there is not exactly one space either side of a greater-than(>) operator |
-| `W025` | `whitespace-op-more-equal` | Warns if there is not exactly one space either side of greater than or equal to (>=) operator |
-| `W026` | `whitespace-op-equals` | Warns if there is not exactly one space either side of equals (=) operator |
-| `W027` | `whitespace-op-mapping` | Warns if there is not exactly one space either side of mapping (->) operator |
-| `W028` | `whitespace-op-divide` | Warns if there is not exactly one space either side of divide (/) operator | 
-| `W029` | `whitespace-op-power` | Warns if there is not exactly one space either side of the power (^) operator |
-| `W030` | `whitespace-op-not-equal` | Warns if there is not exactly one space either side of not-equal (<>) operator |
-| `W031` | `whitespace-op-double-dot` | Warns if there is not exactly one space either side of arithmetic progression (\.\.) operator |
+| `W005` | `align-trailing-comments` | Warns if there are trailing comments in consecutive lines that are not aligned|
+| `W006` | `align-comments` | Warns if there are non-trailing comments in consecutive lines that are not aligned|
+| `W007` | `trailing-whitespace` | Warns if there is trailing whitespace at the end of a line |
+| `W008` | `no-space-after-comment` | Warns if there is no space after any number of # is a line |
+| `W009` | `not-enough-space-before-comment` | Warns if there is not enough space before the first # in any line (defaults to 2) |
+| `W010` | `space-after-comma` | Warns if a comma is followed by more than one space |
+| `W011` | `space-before-comma` | Warns if a comma is preceded by a space |
+| `W012` | `space-after-bracket` | Warns if there is a space after an opening bracket |
+| `W013` | `space-before-bracket` | Warns if there is a space before a closing bracket |
+| `W014` | `multiple-semicolons` | Warns if there is more than one semicolon in a line |
+| `W015` | `keyword-function` | Warns if the keyword *function* is not followed by an open bracket |
+| `W016` | `whitespace-op-assign` | Warns if there is not exactly one space after an assignment (:=) |
+| `W017` | `tabs` | Warns if there are tabs |
+| `W018` | `function-local-same-line` | Warns if the keywords *function* and *local* appear in the same line |
+| `W019` | `whitespace-op-minus` | Warns if there is not exactly one space either side of a minus (-) operator |
+| `W020` | `whitespace-op-plus` | Warns if there is not exactly one space either side of a plus (+) operator  |
+| `W021` | `whitespace-op-multiply` | Warns if there is not exactly one space either side of a multiply (\*) operator |
+| `W022` | `whitespace-op-negative` | Warns if there is not exactly one space preceding a negative (-) operator |
+| `W023` | `whitespace-op-less-than` | Warns if there is not exactly one space either side of a less-than (<) operator |
+| `W024` | `whitespace-op-less-equal` | Warns if there is not exactly one space either side of a less-than / equal-to (<=) operator |
+| `W025` | `whitespace-op-more-than` | Warns if there is not exactly one space either side of a greater-than(>) operator |
+| `W026` | `whitespace-op-more-equal` | Warns if there is not exactly one space either side of greater than or equal to (>=) operator |
+| `W027` | `whitespace-op-equals` | Warns if there is not exactly one space either side of equals (=) operator |
+| `W028` | `whitespace-op-mapping` | Warns if there is not exactly one space either side of mapping (->) operator |
+| `W029` | `whitespace-op-divide` | Warns if there is not exactly one space either side of divide (/) operator | 
+| `W030` | `whitespace-op-power` | Warns if there is not exactly one space either side of the power (^) operator |
+| `W031` | `whitespace-op-not-equal` | Warns if there is not exactly one space either side of not-equal (<>) operator |
+| `W032` | `whitespace-op-double-dot` | Warns if there is not exactly one space either side of arithmetic progression (\.\.) operator |
 
 
 ### Configuration
