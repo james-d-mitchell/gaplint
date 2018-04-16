@@ -1,4 +1,4 @@
-#!/usr/bin/env python2 -O
+#!/usr/bin/env python -O
 '''
 This module provides functions for automatically checking the format of a GAP
 file according to some conventions.
@@ -11,6 +11,10 @@ import argparse
 import os
 import yaml
 
+try:
+    xrange          # Python 2
+except NameError:
+    xrange = range  # Python 3
 
 ###############################################################################
 # Globals
@@ -191,7 +195,7 @@ class WarnRegexBase(Rule):
         assert isinstance(pattern, str)
         assert isinstance(warning_msg, str)
         assert isinstance(exceptions, list)
-        assert reduce(lambda x, y: x and isinstance(y, str), exceptions, True)
+        assert all(isinstance(e, str) for e in exceptions)
         self._pattern = re.compile(pattern)
         self._warning_msg = warning_msg
         self._exception_patterns = exceptions
@@ -514,18 +518,17 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
 
         if len(ass_lvars) != 0:
             ass_lvars = [key for key in ass_lvars if key.find('.') == -1]
-            msg = 'variables assigned but never used: '
-            msg += reduce(lambda x, y: x + ', ' + y, ass_lvars[1:],
-                          ass_lvars[0])
+            msg = 'variables assigned but never used: ' + ass_lvars[0]
+            for x in ass_lvars[1:]:
+                msg += ', ' + x
             _info_warn_file(fname, lines, self._func_start_pos[-1], msg)
             nr_warnings += 1
 
         if len(decl_lvars) != 0:
             decl_lvars = [key for key in decl_lvars]
-            msg = 'unused local variables: '
-            msg += reduce(lambda x, y: x + ', ' + y,
-                          decl_lvars[1:],
-                          decl_lvars[0])
+            msg = 'unused local variables: ' + decl_lvars[0]
+            for x in decl_lvars[1:]:
+                msg += ', ' + x
             _info_warn_file(fname, lines, self._func_start_pos[-1], msg)
             nr_warnings += 1
 
@@ -664,8 +667,8 @@ class WhitespaceOperator(WarnRegexLine):
         self._pattern = re.compile(pattern)
         self._warning_msg = ('wrong whitespace around operator '
                              + op.replace('\\', ''))
-        exceptions = map(lambda e: e.replace(op, '(' + op + ')'), exceptions)
-        self._exceptions = map(lambda e: re.compile(e), exceptions)
+        exceptions = [e.replace(op, '(' + op + ')') for e in exceptions]
+        self._exceptions = [re.compile(e) for e in exceptions]
 
         self._exception_group = op.replace('\\', '')
 
