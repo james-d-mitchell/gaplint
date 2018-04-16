@@ -344,7 +344,8 @@ class ReplaceBetweenDelimiters(Rule):
         assert which == 0 or which == 1
         assert isinstance(lines, str)
         assert isinstance(start, int)
-        assert start < len(lines)
+        if start >= len(lines):
+            return -1
         delim = self._delims[which]
         match = delim.search(lines, start)
         while (match is not None
