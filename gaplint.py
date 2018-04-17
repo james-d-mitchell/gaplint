@@ -5,10 +5,10 @@ file according to some conventions.
 '''
 # pylint: skip-file
 
-import re
-import sys
 import argparse
 import os
+import re
+import sys
 import yaml
 
 try:
@@ -118,8 +118,9 @@ def _info_statement(msg):
 
 
 def _info_action(msg):
-    assert isinstance(msg, str)
-    sys.stdout.write('\033[33m%s\033[0m\n' % msg)
+    if not _SILENT:
+        assert isinstance(msg, str)
+        sys.stdout.write('\033[33m%s\033[0m\n' % msg)
 
 
 def _info_verbose(msg):
@@ -779,7 +780,7 @@ def _parse_args(kwargs):
     global _SILENT, _VERBOSE
     parser = argparse.ArgumentParser(prog='gaplint',
                                      usage='%(prog)s [options]')
-    if __name__ == '__main__':
+    if 'files' not in kwargs:
         parser.add_argument('files', nargs='+', help='the files to lint')
 
     parser.add_argument('--max_warnings', nargs='?', type=int,
@@ -841,9 +842,9 @@ def _parse_args(kwargs):
     if 'disable' in kwargs:
         args.config['disable'] = kwargs['disable']
 
-    if __name__ != '__main__':
-        if not ('files' in kwargs and isinstance(kwargs['files'], list)):
-            _exit_abort('no files specified or not specified in a list')
+    if 'files' in kwargs:
+        if not isinstance(kwargs['files'], list):
+            _exit_abort('No files specified or not specified in a list!')
         args.files = kwargs['files']
 
     files = []
@@ -1270,7 +1271,7 @@ def _is_rule_suppressed(fname, linenum, rule):
 
 
 # pylint: disable=too-many-branches
-def run_gaplint(**kwargs):
+def main(**kwargs):
     '''
     This function applies all rules in this module to the files specified by
     the keywords argument files.
@@ -1292,6 +1293,9 @@ def run_gaplint(**kwargs):
         _info_verbose('Debug on . . .')
     else:
         _info_verbose('Debug off . . .')
+
+    if len(args.files) == 0:
+        return
 
     __init_config_and_suppressions_yml()
     __init_config_and_suppressions_command_line(args)
@@ -1342,11 +1346,8 @@ def run_gaplint(**kwargs):
             sys.stderr.write(_red_string('FAILED with '
                                          + str(total_nr_warnings)
                                          + ' warnings!\n'))
-        if __name__ == '__main__':
-            sys.exit(1)
-    if __name__ == '__main__':
-        sys.exit(0)
+    sys.exit(total_nr_warnings)
 
 
 if __name__ == '__main__':
-    run_gaplint()
+    main()

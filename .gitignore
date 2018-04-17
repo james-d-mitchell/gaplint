@@ -4,3 +4,8 @@
 htmlcov
 gaplint
 restats
+.cache
+.pytest_cache
+.tox
+gaplint.egg-info
+dist
