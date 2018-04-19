@@ -1,4 +1,4 @@
-#!/usr/bin/env python -O
+#!/usr/bin/env python
 '''
 This module provides functions for automatically checking the format of a GAP
 file according to some conventions.
