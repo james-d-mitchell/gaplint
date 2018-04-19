@@ -7,6 +7,7 @@ file according to some conventions.
 
 import argparse
 import os
+import pkg_resources
 import re
 import sys
 import yaml
@@ -806,6 +807,13 @@ def _parse_args(kwargs):
 
     parser.add_argument('--verbose', dest='verbose', action='store_true',
                         help=' (default: False)')
+    parser.set_defaults(verbose=False)
+
+    version = pkg_resources.require('gaplint')[0].version
+    parser.add_argument('--version',
+                        action='version',
+                        version="%(prog)s version {0}".format(version))
+
     parser.set_defaults(verbose=False)
 
     args = parser.parse_args()
