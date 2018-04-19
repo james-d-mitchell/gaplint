@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='gaplint',
-    version='1.0.1',
+    version='1.0.2',
     py_modules=['gaplint'],
     url='https://github.com/james-d-mitchell/gaplint',
     license='GPL3',

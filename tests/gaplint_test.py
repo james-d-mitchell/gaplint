@@ -40,12 +40,6 @@ class TestScript(unittest.TestCase):
     def test_wrong_ext(self):
         run_gaplint(files=['tests/file.wrongext'], silent=True)
 
-    def test_exit_abort(self):
-        with self.assertRaises(SystemExit):
-            gaplint._exit_abort()
-        with self.assertRaises(SystemExit):
-            gaplint._exit_abort('With a message')
-
     def test_info_statement(self):
         gaplint._SILENT = False
         with self.assertRaises(AssertionError):
@@ -68,10 +62,11 @@ class TestScript(unittest.TestCase):
     def test_info_warn(self):
         gaplint._SILENT = False
         with self.assertRaises(AssertionError):
-            gaplint._info_warn_line(0, 0, 0, 0)
+            gaplint.Warn(0, 0, 0)
         with self.assertRaises(AssertionError):
-            gaplint._info_warn_line('test', 'test', 'test', 'test')
-        gaplint._info_warn_line('fname', ['tests/test1.g'], 0, 'message')
+            gaplint.Warn('test', 'test', 'test')
+        gaplint.Warn('fname', 0, 'message')
+
 
 class TestRules(unittest.TestCase):
     #def test_ReplaceMultilineStrings(self):
