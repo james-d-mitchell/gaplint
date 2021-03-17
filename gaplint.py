@@ -305,9 +305,33 @@ class ReplaceAnnoyUTF8Chars(Rule):
         )
 
 
+class WarnNonAsciiChars(Rule):
+    """
+    This rule checks if a string contains non-ascii chars and if it does issues
+    a warning.
+    """
+
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        copy_lines = lines[:]
+        nr_lines = 0
+        while True:
+            try:
+                copy_lines.encode("ascii")
+                break
+            except UnicodeEncodeError as e:
+                nr_lines += copy_lines.count("\n", 0, e.start)
+                copy_lines = copy_lines[e.end :]
+                nr_warnings += 1
+                _warn(fname, nr_lines, "non-ascii character")
+        return nr_warnings, lines
+
+
 class WarnRegexFile(WarnRegexBase):
     """
-    A rule that issues a warning if everytime a regex is matched in a file.
+    A rule that issues a warning everytime a regex is matched in a file.
     """
 
     def __call__(self, fname, lines, nr_warnings=0):
@@ -1089,7 +1113,6 @@ def __verify_glob_suppressions():
 def __init_rules():
     global _FILE_RULES, _LINE_RULES
     _FILE_RULES = [
-        ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000"),
         ReplaceOutputTstOrXMLFile("replace-output-tst-or-xml-file", "M001"),
         ReplaceComments("replace-comments", "M002"),
         ReplaceBetweenDelimiters(
@@ -1097,6 +1120,7 @@ def __init_rules():
         ),
         ReplaceBetweenDelimiters("replace-strings", "M004", r'"', r'"'),
         ReplaceBetweenDelimiters("replace-chars", "M005", r"'", r"'"),
+        WarnNonAsciiChars("non-ascii-chars", "M006"),
         AnalyseLVars("analyse-lvars", "W000"),
         WarnRegexFile(
             "consecutive-empty-lines",

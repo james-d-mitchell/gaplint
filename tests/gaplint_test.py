@@ -59,6 +59,10 @@ class TestScript(unittest.TestCase):
             gaplint._info_verbose("test/tests.g", 0, "msg")
         gaplint._info_verbose("message")
 
+    def test_warn_nonascii(self):
+        with self.assertRaises(SystemExit):
+            run_gaplint(files=["tests/froidure-pin.gi"], silent=True)
+
     # def test_info_warn(self):
     #     gaplint._SILENT = False
     #     with self.assertRaises(AssertionError):
@@ -152,6 +156,32 @@ class TestRules(unittest.TestCase):
         # end without function
         with self.assertRaises(SystemExit):
             rule("fname", "end;", 0)
+
+    def test_WarnNonAsciiChars(self):
+        """
+        Tests non-ascii whitespace characters inside comments still give a
+        warning (see the docstring of test_ReplaceComments for more info).
+        """
+        s = "# Position(S, x) -> Position(H, x)"
+        rule = gaplint.WarnNonAsciiChars()("fname", s, 0)
+        self.assertEqual(rule[0], 1)  # i.e. there is one warning issued
+        rule = gaplint.WarnNonAsciiChars()("fname", s[1:], 0)
+        self.assertEqual(rule[0], 1)  # i.e. there is one warning issued
+
+    def test_ReplaceComments(self):
+        """
+        Tests that only non-whitespace after comments is replaced.  Note that
+        in the test string "# Position..." the non-ascii character \x0a is
+        immediately after the "#", and this is currently considered as not
+        whitespace by the python 3.9 re module. This is why in
+        test_WarnNonAsciiChars we still get a warning, even though the
+        non-whitespace contents of comments are replaced by @.
+        """
+        rule = gaplint.ReplaceComments()
+        self.assertEqual(
+            rule("fname", "# Position(S, x) -> Position(H, x)\n", 0),
+            (0, "# @@@@@@@@@@@ @@ @@ @@@@@@@@@@@ @@\n"),
+        )
 
     def test_run_gaplint(self):
         with self.assertRaises(SystemExit):
