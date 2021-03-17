@@ -4,12 +4,16 @@ coverage:
 	@echo "See: htmlcov/index.html" 
 
 clean: 
-	rm -rf htmlcov
-	rm -f *.pyc
-	rm -f *.pyo
-	rm -f restats
+	git clean -xdf --exclude *.swp --exclude *.swo
+
+.PHONY: clean
 
 profile:
 	profile/profile.py
 
 .PHONY: profile
+
+check: 
+	tox
+
+.PHONY: check
