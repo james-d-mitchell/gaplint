@@ -9,3 +9,4 @@ restats
 .tox
 gaplint.egg-info
 dist
+build
