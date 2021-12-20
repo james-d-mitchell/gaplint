@@ -3,13 +3,15 @@
 This module provides functions for automatically checking the format of a GAP
 file according to some conventions.
 """
-# pylint: skip-file
+# pylint: disable=fixme, too-many-lines, invalid-name,
+# pylint: disable=bad-option-value, consider-using-f-string
 
 import argparse
 import os
-import pkg_resources
 import re
 import sys
+
+import pkg_resources
 import yaml
 
 try:
@@ -85,13 +87,13 @@ def _is_tst_or_xml_file(fname):
     """Returns True if the extension of fname is '.xml' or '.tst'."""
     assert isinstance(fname, str)
     ext = fname.split(".")[-1]
-    return ext == "tst" or ext == "xml"
+    return ext in ("tst", "xml")
 
 
 def _is_escaped(lines, pos):
     assert isinstance(lines, str)
     assert isinstance(pos, int)
-    assert pos >= 0 and pos < len(lines)
+    assert 0 <= pos < len(lines)
     if lines[pos - 1] != "\\":
         return False
     start = lines.rfind("\n", 0, pos)
@@ -102,7 +104,7 @@ def _is_escaped(lines, pos):
 def _is_double_quote_in_char(line, pos):
     assert isinstance(line, str)
     assert isinstance(pos, int)
-    assert pos >= 0 and pos < len(line)
+    assert 0 <= pos < len(line)
     return (
         pos > 0
         and pos + 1 < len(line)
@@ -165,7 +167,7 @@ def _info_verbose(msg):
 ###############################################################################
 
 
-class Rule(object):
+class Rule:  # pylint: disable=too-few-public-methods
     """
     Base class for rules.
 
@@ -188,7 +190,6 @@ class Rule(object):
         that issues with indentation, for example, in one file do not spill
         over into the next file.
         """
-        pass
 
 
 class WarnRegexBase(Rule):
@@ -198,7 +199,7 @@ class WarnRegexBase(Rule):
     exceptions is also matched.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments, dangerous-default-value
         self,
         name,
         code,
@@ -368,7 +369,7 @@ class ReplaceBetweenDelimiters(Rule):
         self._delims = [re.compile(delim1), re.compile(delim2)]
 
     def __find_next(self, which, lines, start):
-        assert which == 0 or which == 1
+        assert which in (0, 1)
         assert isinstance(lines, str)
         assert isinstance(start, int)
         if start >= len(lines):
@@ -436,8 +437,7 @@ class ReplaceOutputTstOrXMLFile(Rule):
                     eol = self._eol_p.search(lines, start).end()
                     out += lines[start:eol]
             return nr_warnings, out
-        else:
-            return nr_warnings, lines
+        return nr_warnings, lines
 
 
 class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
@@ -561,7 +561,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             nr_warnings += 1
 
         if len(decl_lvars) != 0:
-            decl_lvars = [key for key in decl_lvars]
+            decl_lvars = list(decl_lvars)
             msg = "Unused local variables: " + decl_lvars[0]
             for x in decl_lvars[1:]:
                 msg += ", " + x
@@ -608,7 +608,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         func = self._function_p.search(lines, pos + 1)
         if end is None and func is None:
             return len(lines), nr_warnings
-        elif end is None and func is not None:
+        if end is None and func is not None:
             _error(fname, lines.count("\n", 0, pos), "'function' without 'end'")
 
         if func is not None and end is not None and func.start() < end.start():
@@ -684,6 +684,10 @@ class LineTooLong(Rule):
 
 
 class WarnRegexLine(WarnRegexBase):
+    """
+    Warn if regex matches.
+    """
+
     def __call__(self, fname, lines, linenum, nr_warnings=0):
         assert isinstance(fname, str)
         assert isinstance(lines, list)
@@ -703,7 +707,7 @@ class WhitespaceOperator(WarnRegexLine):
     operator is incorrect.
     """
 
-    def __init__(self, name, code, op, exceptions=[]):
+    def __init__(self, name, code, op, exceptions=[]):  # pylint: disable=W0102
         WarnRegexLine.__init__(self, name, code, "", "")
         assert isinstance(op, str)
         assert op[0] != "(" and op[-1] != ")"
@@ -737,7 +741,9 @@ class UnalignedPatterns(Rule):
     aligned.
     """
 
-    def __init__(self, name, code, pattern, group, msg):
+    def __init__(  # pylint: disable=too-many-arguments
+        self, name, code, pattern, group, msg
+    ):
         Rule.__init__(self, name, code)
         assert isinstance(pattern, str)
         assert isinstance(group, int)
@@ -840,7 +846,7 @@ class Indentation(Rule):
 
 
 def _parse_args(kwargs):
-    # pylint: disable=too-many-branches, too-many-statements
+    # pylint: disable=too-many-branches, too-many-statements, global-statement
     global _SILENT, _VERBOSE
     parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
     if "files" not in kwargs:
@@ -1019,9 +1025,9 @@ def __init_config_and_suppressions_yml():
 
     _info_action("Using configurations in %s" % config_yml_fname)
     try:
-        config_yml_file = open(config_yml_fname, "r")
-        ymldic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
-    except Exception:
+        with open(config_yml_fname, "r", encoding="utf8") as config_yml_file:
+            ymldic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
+    except yaml.YAMLError:
         _info_action("IGNORING %s: error parsing YAML" % config_yml_fname)
         return
 
@@ -1053,14 +1059,14 @@ def __init_config_and_suppressions_yml():
 
 
 def __verify_glob_suppressions():
-    global _GLOB_SUPPRESSIONS  # pylint: disable=global-variable-not-assigned
+    global _GLOB_SUPPRESSIONS  # pylint: disable=global-variable-not-assigned, global-statement
     delete = []
     for name_or_code in _GLOB_SUPPRESSIONS:
-        if name_or_code == "all" or name_or_code == "":
+        if name_or_code in ("all", ""):
             continue
         ok = False
         for rule in _LINE_RULES:
-            if name_or_code == rule.name or name_or_code == rule.code:
+            if name_or_code in (rule.name, rule.code):
                 if rule.code[0] == "M":
                     _info_action(
                         "IGNORING cannot disable rule: %s" % name_or_code
@@ -1087,7 +1093,7 @@ def __verify_glob_suppressions():
 
 
 def __init_rules():
-    global _FILE_RULES, _LINE_RULES
+    global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
     _FILE_RULES = [
         ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000"),
         ReplaceOutputTstOrXMLFile("replace-output-tst-or-xml-file", "M001"),
@@ -1265,16 +1271,16 @@ def __is_valid_rule_name_or_code(name_or_code, fname, linenum):
     if name_or_code == "all":
         return True
     for rule in _LINE_RULES:
-        if name_or_code == rule.name or name_or_code == rule.code:
+        if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
                 _info_action("IGNORING cannot disable rule: %s" % name_or_code)
                 return False
-            else:
-                return True
+            return True
     _info_action(
         "IGNORING in %s:%d invalid rule name or code: %s"
         % (fname, linenum + 1, name_or_code)
     )
+    return False
 
 
 def __add_file_suppressions(names_or_codes, fname, linenum):
@@ -1318,10 +1324,9 @@ def __init_file_and_line_suppressions(args):
 
     for fname in args.files:
         try:
-            f = open(fname, "r")
-            lines = f.readlines()
-            f.close()
-        except Exception:
+            with open(fname, "r", encoding="utf8") as f:
+                lines = f.readlines()
+        except IOError:
             _info_action("cannot read file %s, this shouldn't happen" % fname)
             continue
         linenum = 0
@@ -1360,19 +1365,19 @@ def _is_rule_suppressed(fname, linenum, rule):
 
     if rule.code[0] == "M":
         return False
-    elif (
+    if (
         "all" in _GLOB_SUPPRESSIONS
         or rule.code in _GLOB_SUPPRESSIONS
         or rule.name in _GLOB_SUPPRESSIONS
     ):
         return True
-    elif fname in _FILE_SUPPRESSIONS and (
+    if fname in _FILE_SUPPRESSIONS and (
         "all" in _FILE_SUPPRESSIONS[fname]
         or rule.code in _FILE_SUPPRESSIONS[fname]
         or rule.name in _FILE_SUPPRESSIONS[fname]
     ):
         return True
-    elif (
+    if (
         fname in _LINE_SUPPRESSIONS
         and linenum in _LINE_SUPPRESSIONS[fname]
         and (
@@ -1434,9 +1439,8 @@ def main(**kwargs):
     for fname in args.files:
         _info_verbose("Linting %s . . ." % fname)
         try:
-            ffile = open(fname, "r")
-            lines = ffile.read()
-            ffile.close()
+            with open(fname, "r", encoding="utf8") as ffile:
+                lines = ffile.read()
         except IOError:
             _info_action("SKIPPING " + fname + ": cannot open for reading")
 

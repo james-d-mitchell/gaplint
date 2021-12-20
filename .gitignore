@@ -10,3 +10,4 @@ restats
 gaplint.egg-info
 dist
 build
+.gaplint.yml
