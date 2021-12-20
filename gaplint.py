@@ -917,7 +917,7 @@ def __init_config_and_suppressions_yml():
     _info_action('Using configurations in %s' % config_yml_fname)
     try:
         config_yml_file = open(config_yml_fname, 'r')
-        ymldic = yaml.load(config_yml_file)
+        ymldic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
     except Exception:
         _info_action('IGNORING %s: error parsing YAML' % config_yml_fname)
         return
