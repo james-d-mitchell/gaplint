@@ -59,14 +59,6 @@ class TestScript(unittest.TestCase):
             gaplint._info_verbose('test/tests.g', 0, 'msg')
         gaplint._info_verbose('message')
 
-    def test_info_warn(self):
-        gaplint._SILENT = False
-        with self.assertRaises(AssertionError):
-            gaplint.Warn(0, 0, 0)
-        with self.assertRaises(AssertionError):
-            gaplint.Warn('test', 'test', 'test')
-        gaplint.Warn('fname', 0, 'message')
-
 
 class TestRules(unittest.TestCase):
     #def test_ReplaceMultilineStrings(self):
