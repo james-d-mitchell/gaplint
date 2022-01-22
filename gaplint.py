@@ -1110,6 +1110,12 @@ def __init_rules():
             r"\n\s*\n\s*\n",
             "Consecutive empty lines",
         ),
+        WarnRegexFile(
+            "assign-then-return",
+            "W033",
+            r"(\w+)\s*:=[^;]*;\n\s*return\s+(\1);",
+            "Pointless assignment immediately returned",
+        ),
     ]
     _LINE_RULES = [
         LineTooLong("line-too-long", "W002"),
