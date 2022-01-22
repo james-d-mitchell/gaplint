@@ -1116,6 +1116,12 @@ def __init_rules():
             r"(\w+)\s*:=[^;]*;\n\s*return\s+(\1);",
             "Pointless assignment immediately returned",
         ),
+        WarnRegexFile(
+            "combine-ifs-with-elif",
+            "W034",
+            r"(if|elif).*\n\s*(ErrorNoReturn|Error|return|TryNextMethod).*\n\s*fi;(\n)*\s*if",
+            "Combine multiple ifs using elif",
+        ),
     ]
     _LINE_RULES = [
         LineTooLong("line-too-long", "W002"),
