@@ -10,6 +10,7 @@ import argparse
 import os
 import re
 import sys
+from itertools import chain
 
 import pkg_resources
 import yaml
@@ -323,6 +324,102 @@ class WarnRegexFile(WarnRegexBase):
         return nr_warnings, lines
 
 
+class AnalyseDecls(Rule):
+    def __init__(self, name, code):
+        Rule.__init__(self, name, code)
+        self._patterns = [
+            (
+                re.compile(r"DeclareOperation\(\"(\w+)"),
+                "operation",
+            ),
+            (
+                re.compile(r"DeclareAttribute\(\"(\w+)"),
+                "attribute",
+            ),
+            (
+                re.compile(r"DeclareProperty\(\"(\w+)"),
+                "property",
+            ),
+            (
+                re.compile(r"DeclareGlobalFunction\(\"(\w+)"),
+                "global function",
+            ),
+            (
+                re.compile(r"BindGlobal\(\"(\w+)"),
+                "global value",
+            ),
+        ]
+
+    def __call__(self, global_rules, nr_warnings):
+        for gd_fname, gd_file in global_rules.gd_files.items():
+            for decl, name in self._patterns:
+                for decl_match in decl.finditer(gd_file):
+                    decl_name = re.compile(decl_match.group(1))
+                    if not decl_name.search(
+                        global_rules.gi_files
+                    ) and not decl_name.search(
+                        gd_file,
+                        decl_match.start() + len(decl.pattern) + 1,
+                    ):
+                        nr_warnings += 1
+                        msg = "%s %s declared, but not used" % (
+                            name,
+                            decl_name.pattern,
+                        )
+                        _warn(
+                            gd_fname,
+                            gd_file.count("\n", 0, decl_match.start()),
+                            msg,
+                        )
+                    doc_pattern = re.compile(
+                        r'Name\s*=\s*"%s"' % decl_name.pattern
+                    )
+                    if not decl_name.pattern.endswith(
+                        "NC"
+                    ) and not doc_pattern.search(global_rules.xml_files):
+                        nr_warnings += 1
+                        msg = "%s %s declared, but not documented" % (
+                            name,
+                            decl_name.pattern,
+                        )
+                        _warn(
+                            gd_fname,
+                            gd_file.count("\n", 0, decl_match.start()),
+                            msg,
+                        )
+
+        return nr_warnings
+
+
+class GlobalRules:
+    def __init__(self):
+        self.gd_files = {}
+        self.gi_files = ""
+        self.xml_files = ""
+        self._rules = []
+        self._global_rules = []
+
+    def add_rule(self, global_rule):
+        self._global_rules.append(global_rule)
+
+    def __call__(self, fname, lines, nr_warnings=0):
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        if fname.split(".")[-1] == "gd":
+            self.gd_files[fname] = lines
+        elif fname.split(".")[-1] == "gi":
+            self.gi_files += lines
+        elif fname.split(".")[-1] == "xml":
+            self.xml_files += lines
+        return nr_warnings, lines
+
+    def apply_rules(self, nr_warnings):
+        for global_rule in self._global_rules:
+            nr_warnings = global_rule(self, nr_warnings)
+        return nr_warnings
+
+
 class ReplaceComments(Rule):
     """
     Replace between '#+' and the end of a line by '#+' and as many '@' as there
@@ -346,7 +443,7 @@ class ReplaceComments(Rule):
             while octo < len(lines) and lines[octo] == "#":
                 repl += "#"
                 octo += 1
-            repl += re.sub(r"\S", "@", lines[octo:end])
+            repl += re.sub(r"[^!\s]", "@", lines[octo:end])
             lines = lines[:start] + repl + lines[end:]
             start = lines.find("#", end)
             while _is_in_string(lines, start):
@@ -398,7 +495,7 @@ class ReplaceBetweenDelimiters(Rule):
                     "Unmatched %s" % self._delims[0].pattern,
                 )
             end += len(self._delims[1].pattern)
-            repl = re.sub("[^\n]", "@", lines[start:end])
+            repl = re.sub("[^\n ]", "@", lines[start:end])
             assert len(repl) == end - start
 
             lines = lines[:start] + repl + lines[end:]
@@ -908,7 +1005,13 @@ def _parse_args(kwargs):
         version="%(prog)s version {0}".format(version),
     )
 
-    parser.set_defaults(verbose=False)
+    parser.add_argument(
+        "--enable-experimental",
+        dest="enable_experimental",
+        action="store_true",
+        help=" (default: False)",
+    )
+    parser.set_defaults(enable_experimental=False)
 
     args = parser.parse_args()
 
@@ -1092,12 +1195,21 @@ def __verify_glob_suppressions():
 ###############################################################################
 
 
-def __init_rules():
-    global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
+def __init_rules(args):
+    global _EXPERIMENTAL_FULE_RULES, _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
+    _EXPERIMENTAL_FILE_RULES = [
+        WarnRegexFile(
+            "combine-ifs-with-elif",
+            "W034",
+            r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
+            "Combine multiple ifs using elif",
+        ),
+    ]
     _FILE_RULES = [
         ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000"),
-        ReplaceOutputTstOrXMLFile("replace-output-tst-or-xml-file", "M001"),
         ReplaceComments("replace-comments", "M002"),
+        GlobalRules(),
+        ReplaceOutputTstOrXMLFile("replace-output-tst-or-xml-file", "M001"),
         ReplaceBetweenDelimiters(
             "replace-multiline-strings", "M003", r'"""', r'"""'
         ),
@@ -1116,13 +1228,9 @@ def __init_rules():
             r"(\w+)\s*:=[^;]*;\n\s*return\s+(\1);",
             "Pointless assignment immediately returned",
         ),
-        WarnRegexFile(
-            "combine-ifs-with-elif",
-            "W034",
-            r"(if|elif).*\n\s*(ErrorNoReturn|Error|return|TryNextMethod).*\n\s*fi;(\n)*\s*if",
-            "Combine multiple ifs using elif",
-        ),
     ]
+    if args.enable_experimental:
+        _FILE_RULES += _EXPERIMENTAL_FILE_RULES
     _LINE_RULES = [
         LineTooLong("line-too-long", "W002"),
         Indentation("indentation", "W003"),
@@ -1158,7 +1266,7 @@ def __init_rules():
         WarnRegexLine(
             "no-space-after-comment",
             "W008",
-            r"#+[^ \t\n\r\f\v#]",
+            r"#+[^ \t\n\r\f\v#\!]",
             "No space after comment",
         ),
         WarnRegexLine(
@@ -1435,7 +1543,7 @@ def main(**kwargs):
 
     __init_config_and_suppressions_yml()
     __init_config_and_suppressions_command_line(args)
-    __init_rules()
+    __init_rules(args)
     __verify_glob_suppressions()
     __init_file_and_line_suppressions(args)
 
@@ -1472,11 +1580,21 @@ def main(**kwargs):
         for rule in _LINE_RULES:
             rule.reset()
         total_nr_warnings += nr_warnings
-        if nr_warnings == 0:
-            _info_statement("SUCCESS in " + fname)
-    if total_nr_warnings != 0:
-        if not _SILENT:
-            sys.stderr.write("Total errors found: %d\n" % total_nr_warnings)
+
+    if args.enable_experimental:
+        global_rules = _FILE_RULES[2]
+        global_rules.add_rule(AnalyseDecls("analyse-decls", "W034"))
+        total_nr_warnings = global_rules.apply_rules(total_nr_warnings)
+
+    if not _SILENT:
+        if total_nr_warnings == 0:
+            write_to = sys.stdout
+        else:
+            write_to = sys.stderr
+        write_to.write(
+            "Analysed %d files, found %d errors!\n"
+            % (len(args.files), total_nr_warnings)
+        )
     sys.exit(total_nr_warnings > 0)
 
 
