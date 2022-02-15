@@ -10,7 +10,6 @@ import argparse
 import os
 import re
 import sys
-from itertools import chain
 
 import pkg_resources
 import yaml
@@ -75,6 +74,7 @@ _LINE_SUPPRESSIONS = {}
 _CONFIGURED = False
 _LINE_RULES = []
 _FILE_RULES = []
+_EXPERIMENTAL_FILE_RULES = []
 
 _ESCAPE_PATTERN = re.compile(r"(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)")
 
@@ -325,6 +325,11 @@ class WarnRegexFile(WarnRegexBase):
 
 
 class AnalyseDecls(Rule):
+    """
+    A global rule that detects operations/attributes/properties that are
+    declared but not documented or not implemented.
+    """
+
     def __init__(self, name, code):
         Rule.__init__(self, name, code)
         self._patterns = [
@@ -392,6 +397,9 @@ class AnalyseDecls(Rule):
 
 
 class GlobalRules:
+    """A class for containing rules that should be applied to all the input
+    files, such as AnalyseDecls. This is an experimental feature."""
+
     def __init__(self):
         self.gd_files = {}
         self.gi_files = ""
@@ -400,6 +408,7 @@ class GlobalRules:
         self._global_rules = []
 
     def add_rule(self, global_rule):
+        """Adds a rule to the global rules to be applied."""
         self._global_rules.append(global_rule)
 
     def __call__(self, fname, lines, nr_warnings=0):
@@ -415,6 +424,7 @@ class GlobalRules:
         return nr_warnings, lines
 
     def apply_rules(self, nr_warnings):
+        """Applies all the currently added global rules."""
         for global_rule in self._global_rules:
             nr_warnings = global_rule(self, nr_warnings)
         return nr_warnings
@@ -1196,12 +1206,13 @@ def __verify_glob_suppressions():
 
 
 def __init_rules(args):
-    global _EXPERIMENTAL_FULE_RULES, _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
+    global _EXPERIMENTAL_FILE_RULES, _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
     _EXPERIMENTAL_FILE_RULES = [
         WarnRegexFile(
             "combine-ifs-with-elif",
             "W034",
-            r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
+            r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)"
+            + r"(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
             "Combine multiple ifs using elif",
         ),
     ]
