@@ -1277,7 +1277,7 @@ def __init_rules(args):
         WarnRegexLine(
             "no-space-after-comment",
             "W008",
-            r"#+[^ \t\n\r\f\v#\!]",
+            r"#+\!?[^ \t\n\r\f\v#\!]",
             "No space after comment",
         ),
         WarnRegexLine(
