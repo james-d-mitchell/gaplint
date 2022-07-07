@@ -1264,7 +1264,7 @@ def __init_rules(args):
         WarnRegexLine(
             "trailing-whitespace",
             "W007",
-            r"\s+$",
+            r"^(?!#\!).*\s+$",
             "Trailing whitespace",
             [],
             _is_tst_or_xml_file,
