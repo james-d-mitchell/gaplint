@@ -38,7 +38,6 @@ with open("README.rst", "r", encoding="utf8") as f:
             "Operating System :: Unix",
             "Operating System :: Microsoft :: Windows",
             "Programming Language :: Python",
-            "Programming Language :: Python :: 2",
             "Programming Language :: Python :: 3",
             "Topic :: Software Development :: Libraries :: Python Modules",
         ],
