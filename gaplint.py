@@ -14,11 +14,6 @@ import sys
 import pkg_resources
 import yaml
 
-try:
-    xrange  # Python 2
-except NameError:
-    xrange = range  # Python 3
-
 ###############################################################################
 # Globals
 ###############################################################################
@@ -1581,7 +1576,7 @@ def main(**kwargs):
             nr_warnings, lines = rule(fname, lines, nr_warnings)
             too_many_warnings(nr_warnings + total_nr_warnings)
         lines = lines.split("\n")
-        for linenum in xrange(len(lines)):
+        for linenum in range(len(lines)):
             for rule in _LINE_RULES:
                 if not _is_rule_suppressed(fname, linenum, rule):
                     nr_warnings, lines = rule(
