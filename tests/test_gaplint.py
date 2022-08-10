@@ -59,6 +59,10 @@ class TestScript(unittest.TestCase):
             gaplint._info_verbose("test/tests.g", 0, "msg")
         gaplint._info_verbose("message")
 
+    def test_autodoc_whitespace(self):
+        with self.assertRaises(SystemExit):
+            run_gaplint(files=["tests/test5.g"])
+
 
 class TestRules(unittest.TestCase):
     # def test_ReplaceMultilineStrings(self):
