@@ -1173,7 +1173,9 @@ def __verify_glob_suppressions():
         if name_or_code in ("all", ""):
             continue
         ok = False
-        for rule in _LINE_RULES:
+        for rule in _LINE_RULES + _FILE_RULES:
+            if isinstance(rule, GlobalRules):
+                continue
             if name_or_code in (rule.name, rule.code):
                 if rule.code[0] == "M":
                     _info_action(
@@ -1487,7 +1489,10 @@ def _is_rule_suppressed(fname, linenum, rule):
     """
     assert isinstance(fname, str)
     assert isinstance(linenum, int)
-    assert isinstance(rule, Rule)
+    assert isinstance(rule, (Rule, GlobalRules))
+
+    if isinstance(rule, GlobalRules):
+        return False
 
     if rule.code[0] == "M":
         return False
@@ -1572,9 +1577,9 @@ def main(**kwargs):
 
         nr_warnings = 0
         for rule in _FILE_RULES:
-            # TODO can't suppress these so far
-            nr_warnings, lines = rule(fname, lines, nr_warnings)
-            too_many_warnings(nr_warnings + total_nr_warnings)
+            if not _is_rule_suppressed(fname, 0, rule):
+                nr_warnings, lines = rule(fname, lines, nr_warnings)
+                too_many_warnings(nr_warnings + total_nr_warnings)
         lines = lines.split("\n")
         for linenum in range(len(lines)):
             for rule in _LINE_RULES:
