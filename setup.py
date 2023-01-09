@@ -6,7 +6,7 @@ from setuptools import find_packages, setup
 with open("README.rst", "r", encoding="utf8") as f:
     setup(
         name="gaplint",
-        version="1.1.3",
+        version="1.1.4",
         py_modules=["gaplint"],
         url="https://github.com/james-d-mitchell/gaplint",
         license="GPL3",
