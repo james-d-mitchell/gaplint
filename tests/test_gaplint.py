@@ -37,6 +37,19 @@ class TestScript(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run_gaplint(files=["tests/test.tst"], silent=True)
 
+    def test_disable_global_rule(self):
+        with self.assertRaises(SystemExit) as cm:
+            run_gaplint(
+                files=["tests/methsel2.g"],
+                silent=True,
+                # Disable all rules except analyse-lvars
+                disable="W001,W002,W003,W004,W005,W006,W007,W008,W009,W010,"
+                + "W011,W012,W013,W014,W015,W016,W017,W018,W019,W020,"
+                + "W021,W022,W023,W024,W025,W026,W027,W028,W029,W030,"
+                + "W031,W032,W033",
+            )
+        self.assertEqual(cm.exception.code, 0)
+
     def test_wrong_ext(self):
         run_gaplint(files=["tests/file.wrongext"], silent=True)
 

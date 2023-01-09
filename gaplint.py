@@ -1175,6 +1175,7 @@ def __verify_glob_suppressions():
         ok = False
         for rule in _LINE_RULES + _FILE_RULES:
             if isinstance(rule, GlobalRules):
+                ok = True
                 continue
             if name_or_code in (rule.name, rule.code):
                 if rule.code[0] == "M":
@@ -1398,7 +1399,10 @@ def __is_valid_rule_name_or_code(name_or_code, fname, linenum):
     # TODO assertions
     if name_or_code == "all":
         return True
-    for rule in _LINE_RULES:
+    for rule in _LINE_RULES + _FILE_RULES:
+        if isinstance(rule, GlobalRules):
+            continue
+
         if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
                 _info_action("IGNORING cannot disable rule: %s" % name_or_code)
