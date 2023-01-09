@@ -554,7 +554,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._function_p = re.compile(r"\bfunction\b")
         self._end_p = re.compile(r"\bend\b")
         self._local_p = re.compile(r"\blocal\b")
-        self._var_p = re.compile(r"\w+")
+        self._var_p = re.compile(r"\w+\s*\w*")
         self._ass_var_p = re.compile(r"([a-zA-Z0-9_\.]+)\s*:=")
         self._use_var_p = re.compile(r"(\b\w+\b)(?!\s*:=)\W*")
         self._ws1_p = re.compile(r"[ \t\r\f\v]+")
@@ -619,6 +619,17 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         args = self._func_args[self._depth]
 
         for var in new_args:
+            var = [x.strip() for x in var.split(" ") if len(x) != 0]
+            if len(var) == 1:
+                var = var[0].strip()
+            elif len(var) != 2 or var[0] not in ("readonly", "readwrite"):
+                _error(
+                    fname,
+                    lines.count("\n", 0, pos),
+                    'Invalid syntax: "%s"' % lines[start:end],
+                )
+            else:
+                var = var[1].strip()
             if var in args:
                 _error(
                     fname,
@@ -682,6 +693,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
 
         new_lvars = self._var_p.findall(lines, pos, end)
         for var in new_lvars:
+            var = var.strip()
             if var in lvars:
                 _error(
                     fname,
