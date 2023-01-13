@@ -1116,23 +1116,18 @@ def __config_yml_path(dir_path):
     cases A, B, C.
     """
     assert os.path.isdir(dir_path)
-    entries = os.listdir(dir_path)  # initialise list of entries in the...
-    # ...directory we are currently searching
-    for entry in entries:
-        # if entry a directory, True, else False
-        entry_isdir = os.path.isdir(
-            os.path.abspath(os.path.join(dir_path, entry))
-        )
-        if entry_isdir and entry == ".git":  # base case A
-            return None
-        if not entry_isdir and entry == ".gaplint.yml":  # base case B
-            yml_path = os.path.abspath(os.path.join(dir_path, ".gaplint.yml"))
-            return yml_path
-    # if A and B not satisfied, recursive call made on parent directory
+    entries = os.listdir(dir_path)
+
+    if ".gaplint.yml" in entries:
+        yml_path = os.path.abspath(os.path.join(dir_path, ".gaplint.yml"))
+        return yml_path
+    if ".git" in entries and os.path.isdir(
+        os.path.abspath(os.path.join(dir_path, ".git"))
+    ):
+        return None
+
     pardir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
-    # when os.pardir is called on the root directory path, it just returns the
-    # path to the root directory again, hence
-    if pardir_path == dir_path:  # base case C
+    if pardir_path == dir_path:
         return None
     return __config_yml_path(pardir_path)  # recursive call
 
