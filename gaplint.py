@@ -11,6 +11,9 @@ import os
 import re
 import sys
 
+from os import listdir
+from os.path import isdir, exists, isfile, abspath, join
+
 import pkg_resources
 import yaml
 
@@ -1071,7 +1074,7 @@ def _parse_args(kwargs):
 
     files = []
     for fname in args.files:
-        if not (os.path.exists(fname) and os.path.isfile(fname)):
+        if not (exists(fname) and isfile(fname)):
             _info_action("SKIPPING " + fname + ": cannot open for reading")
         elif (
             not fname.split(".")[-1] in _VALID_EXTENSIONS
@@ -1115,18 +1118,16 @@ def __config_yml_path(dir_path):
     root directory has been searched (script not found, returns None) - base
     cases A, B, C.
     """
-    assert os.path.isdir(dir_path)
-    entries = os.listdir(dir_path)
+    assert isdir(dir_path)
+    entries = listdir(dir_path)
 
     if ".gaplint.yml" in entries:
-        yml_path = os.path.abspath(os.path.join(dir_path, ".gaplint.yml"))
+        yml_path = abspath(join(dir_path, ".gaplint.yml"))
         return yml_path
-    if ".git" in entries and os.path.isdir(
-        os.path.abspath(os.path.join(dir_path, ".git"))
-    ):
+    if ".git" in entries and isdir(abspath(join(dir_path, ".git"))):
         return None
 
-    pardir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
+    pardir_path = abspath(join(dir_path, os.pardir))
     if pardir_path == dir_path:
         return None
     return __config_yml_path(pardir_path)  # recursive call
