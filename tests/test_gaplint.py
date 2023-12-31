@@ -4,13 +4,14 @@ import unittest
 import sys
 import os
 
+import gaplint
+from gaplint import main as run_gaplint
+
 path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if path not in sys.path:
     sys.path.insert(1, path)
 del path
 
-import gaplint
-from gaplint import main as run_gaplint
 
 sys.stdout = open(os.devnull, "w")
 sys.stderr = open(os.devnull, "w")

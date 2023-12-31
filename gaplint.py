@@ -1,10 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 This module provides functions for automatically checking the format of a GAP
 file according to some conventions.
 """
-# pylint: disable=fixme, too-many-lines, invalid-name,
-# pylint: disable=bad-option-value, consider-using-f-string
+# pylint: disable=fixme, too-many-lines
 
 import argparse
 import os
@@ -69,7 +68,6 @@ _GLOB_SUPPRESSIONS = {}
 _FILE_SUPPRESSIONS = {}
 _LINE_SUPPRESSIONS = {}
 
-_CONFIGURED = False
 _LINE_RULES = []
 _FILE_RULES = []
 _EXPERIMENTAL_FILE_RULES = []
@@ -129,9 +127,7 @@ def _warn_or_error(fname, linenum, msg, threshold):
         assert isinstance(linenum, int)
         assert isinstance(msg, str)
         assert isinstance(threshold, int)
-        sys.stderr.write(
-            "%s:%d: %s [%d]\n" % (fname, linenum + 1, msg, threshold)
-        )
+        sys.stderr.write(f"{fname}:{linenum + 1}: {msg} [{threshold}]\n")
 
 
 def _warn(fname, linenum, msg):
@@ -146,19 +142,19 @@ def _error(fname, linenum, msg):
 def _info_statement(msg):
     if not _SILENT:
         assert isinstance(msg, str)
-        sys.stdout.write("\033[40;38;5;82m%s\033[0m\n" % msg)
+        sys.stdout.write(f"\033[40;38;5;82m{msg}\033[0m\n")
 
 
 def _info_action(msg):
     if not _SILENT:
         assert isinstance(msg, str)
-        sys.stdout.write("\033[33m%s\033[0m\n" % msg)
+        sys.stdout.write(f"\033[33m{msg}\033[0m\n")
 
 
 def _info_verbose(msg):
     if not _SILENT and _VERBOSE:
         assert isinstance(msg, str)
-        sys.stdout.write("\033[40;38;5;208m%s\033[0m\n" % msg)
+        sys.stdout.write(f"\033[40;38;5;208m{msg}\033[0m\n")
 
 
 ###############################################################################
@@ -365,9 +361,8 @@ class AnalyseDecls(Rule):
                         decl_match.start() + len(decl.pattern) + 1,
                     ):
                         nr_warnings += 1
-                        msg = "%s %s declared, but not used" % (
-                            name,
-                            decl_name.pattern,
+                        msg = (
+                            f"{name} {decl_name.pattern} declared, but not used"
                         )
                         _warn(
                             gd_fname,
@@ -375,16 +370,13 @@ class AnalyseDecls(Rule):
                             msg,
                         )
                     doc_pattern = re.compile(
-                        r'Name\s*=\s*"%s"' % decl_name.pattern
+                        rf'Name\s*=\s*"{decl_name.pattern}"'
                     )
                     if not decl_name.pattern.endswith(
                         "NC"
                     ) and not doc_pattern.search(global_rules.xml_files):
                         nr_warnings += 1
-                        msg = "%s %s declared, but not documented" % (
-                            name,
-                            decl_name.pattern,
-                        )
+                        msg = f"{name} {decl_name.pattern} declared, but not documented"
                         _warn(
                             gd_fname,
                             gd_file.count("\n", 0, decl_match.start()),
@@ -500,7 +492,7 @@ class ReplaceBetweenDelimiters(Rule):
                 _error(
                     fname,
                     lines.count("\n", 0, start),
-                    "Unmatched %s" % self._delims[0].pattern,
+                    "Unmatched {self._delims[0].pattern}",
                 )
             end += len(self._delims[1].pattern)
             repl = re.sub("[^\n ]", "@", lines[start:end])
@@ -629,7 +621,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 _error(
                     fname,
                     lines.count("\n", 0, pos),
-                    'Invalid syntax: "%s"' % lines[start:end],
+                    f'Invalid syntax: "{lines[start:end]}"',
                 )
             else:
                 var = var[1].strip()
@@ -637,13 +629,13 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 _error(
                     fname,
                     lines.count("\n", 0, pos),
-                    "Duplicate function argument: %s" % var,
+                    f"Duplicate function argument: {var}",
                 )
             elif var in _GAP_KEYWORDS:
                 _error(
                     fname,
                     lines.count("\n", 0, pos),
-                    "Function argument is keyword: %s" % var,
+                    f"Function argument is keyword: {var}",
                 )
             else:
                 args.add(var)
@@ -707,14 +699,13 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 _error(
                     fname,
                     lines.count("\n", 0, pos),
-                    "Name used for function argument and local variable: %s"
-                    % var,
+                    f"Name used for function argument and local variable: {var}",
                 )
             elif var in _GAP_KEYWORDS:
                 _error(
                     fname,
                     lines.count("\n", 0, pos),
-                    "Local variable is keyword: " + var,
+                    f"Local variable is keyword: {var}",
                 )
             else:
                 lvars.add(var)
@@ -793,8 +784,7 @@ class LineTooLong(Rule):
             _warn(
                 fname,
                 linenum,
-                "Too long line (%d / %d)"
-                % (len(lines[linenum]) - 1, self._cols),
+                f"Too long line ({len(lines[linenum]) - 1} / {self._cols})",
             )
             nr_warnings += 1
         return nr_warnings, lines
@@ -1022,7 +1012,7 @@ def _parse_args(kwargs):
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s version {0}".format(version),
+        version=f"%(prog)s version {version}",
     )
 
     parser.add_argument(
@@ -1077,8 +1067,8 @@ def _parse_args(kwargs):
         if not (exists(fname) and isfile(fname)):
             _info_action("SKIPPING " + fname + ": cannot open for reading")
         elif (
-            not fname.split(".")[-1] in _VALID_EXTENSIONS
-            and not ".".join(fname.split(".")[-2:]) in _VALID_EXTENSIONS
+            fname.split(".")[-1] not in _VALID_EXTENSIONS
+            and ".".join(fname.split(".")[-2:]) not in _VALID_EXTENSIONS
         ):
             _info_action("IGNORING " + fname + ": not a valid file extension")
         else:
@@ -1134,17 +1124,16 @@ def __config_yml_path(dir_path):
 
 
 def __init_config_and_suppressions_yml():
-
     config_yml_fname = __config_yml_path(os.getcwd())
     if config_yml_fname is None:
         return
 
-    _info_action("Using configurations in %s" % config_yml_fname)
+    _info_action(f"Using configurations in {config_yml_fname}")
     try:
-        with open(config_yml_fname, "r", encoding="utf8") as config_yml_file:
+        with open(config_yml_fname, "r", encoding="utf-8") as config_yml_file:
             ymldic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
-    except yaml.YAMLError:
-        _info_action("IGNORING %s: error parsing YAML" % config_yml_fname)
+    except (yaml.YAMLError, IOError):
+        _info_action("IGNORING {config_yml_fname}: error parsing YAML")
         return
 
     if ymldic is None:
@@ -1152,16 +1141,14 @@ def __init_config_and_suppressions_yml():
     for key in ymldic:
         if key not in _GLOB_CONFIG and key != "disable":
             _info_action(
-                "IGNORING unknown configuration value '%s' in %s"
-                % (key, config_yml_fname)
+                f"IGNORING unknown configuration value '{key}' in {config_yml_fname}"
             )
         elif key != "disable":
             _GLOB_CONFIG[key] = ymldic[key]
         else:
             if not isinstance(ymldic[key], list):
                 _info_action(
-                    "IGNORING %s: badly formed field 'disable'"
-                    % config_yml_fname
+                    f"IGNORING {config_yml_fname}: badly formed field 'disable'"
                 )
             else:
                 for name_or_code in ymldic[key]:
@@ -1169,8 +1156,8 @@ def __init_config_and_suppressions_yml():
                         _GLOB_SUPPRESSIONS[name_or_code] = None
                     else:
                         _info_action(
-                            "IGNORING bad value %s in field" % name_or_code
-                            + " 'disable' in %s" % config_yml_fname
+                            f"IGNORING bad value {name_or_code} in field"
+                            + f" 'disable' in {config_yml_fname}"
                         )
 
 
@@ -1188,7 +1175,7 @@ def __verify_glob_suppressions():
             if name_or_code in (rule.name, rule.code):
                 if rule.code[0] == "M":
                     _info_action(
-                        "IGNORING cannot disable rule: %s" % name_or_code
+                        f"IGNORING cannot disable rule: {name_or_code}"
                     )
                 else:
                     ok = True
@@ -1201,8 +1188,8 @@ def __verify_glob_suppressions():
         config_yml_fname = __config_yml_path(os.getcwd())
         msg = "IGNORING in command line "
         if config_yml_fname is not None:
-            msg += "or %s " % config_yml_fname
-        msg += "invalid rule name or code: %s" % name_or_code
+            msg += f"or {config_yml_fname}"
+        msg += f"invalid rule name or code: {name_or_code}"
         _info_action(msg)
 
 
@@ -1413,12 +1400,11 @@ def __is_valid_rule_name_or_code(name_or_code, fname, linenum):
 
         if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
-                _info_action("IGNORING cannot disable rule: %s" % name_or_code)
+                _info_action(f"IGNORING cannot disable rule: {name_or_code}")
                 return False
             return True
     _info_action(
-        "IGNORING in %s:%d invalid rule name or code: %s"
-        % (fname, linenum + 1, name_or_code)
+        f"IGNORING in {fname}:{linenum + 1} invalid rule name or code: {name_or_code}"
     )
     return False
 
@@ -1467,7 +1453,7 @@ def __init_file_and_line_suppressions(args):
             with open(fname, "r", encoding="utf8") as f:
                 lines = f.readlines()
         except IOError:
-            _info_action("cannot read file %s, this shouldn't happen" % fname)
+            _info_action(f"cannot read file {fname}, this shouldn't happen")
             continue
         linenum = 0
         # Find rules suppressed for the entire file at the start of the file
@@ -1576,16 +1562,17 @@ def main(**kwargs):
     def too_many_warnings(nr_warnings):
         if nr_warnings >= max_warnings:
             if not _SILENT:
-                sys.stderr.write("Total errors found: %d\n" % nr_warnings)
+                sys.stderr.write(f"Total errors found: {nr_warnings}\n")
             sys.exit("Too many warnings, giving up!")
 
     for fname in args.files:
-        _info_verbose("Linting %s . . ." % fname)
+        _info_verbose(f"Linting {fname} . . .")
         try:
-            with open(fname, "r", encoding="utf8") as ffile:
+            with open(fname, "r", encoding="utf-8") as ffile:
                 lines = ffile.read()
         except IOError:
             _info_action("SKIPPING " + fname + ": cannot open for reading")
+            return
 
         nr_warnings = 0
         for rule in _FILE_RULES:
@@ -1599,7 +1586,7 @@ def main(**kwargs):
                     nr_warnings, lines = rule(
                         fname, lines, linenum, nr_warnings
                     )
-                    too_many_warnings(nr_warnings + total_nr_warnings)
+        too_many_warnings(nr_warnings + total_nr_warnings)
         for rule in _LINE_RULES:
             rule.reset()
         total_nr_warnings += nr_warnings
@@ -1615,8 +1602,7 @@ def main(**kwargs):
         else:
             write_to = sys.stderr
         write_to.write(
-            "Analysed %d files, found %d errors!\n"
-            % (len(args.files), total_nr_warnings)
+            f"Analysed {len(args.files)} files, found {total_nr_warnings} errors!\n"
         )
     sys.exit(total_nr_warnings > 0)
 
