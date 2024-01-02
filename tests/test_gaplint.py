@@ -54,12 +54,6 @@ class TestScript(unittest.TestCase):
     def test_wrong_ext(self):
         run_gaplint(files=["tests/file.wrongext"], silent=True)
 
-    def test_info_statement(self):
-        gaplint._SILENT = False
-        with self.assertRaises(AssertionError):
-            gaplint._info_statement(0)
-        gaplint._info_statement("test")
-
     def test_info_action(self):
         with self.assertRaises(AssertionError):
             gaplint._SILENT = False

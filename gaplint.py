@@ -9,11 +9,12 @@ import argparse
 import os
 import re
 import sys
+from typing import Callable, Tuple, List, Dict, Union, Optional
 
 from os import listdir
 from os.path import isdir, exists, isfile, abspath, join
+from importlib.metadata import version
 
-import pkg_resources
 import yaml
 
 ###############################################################################
@@ -80,14 +81,14 @@ _ESCAPE_PATTERN = re.compile(r"(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)")
 ###############################################################################
 
 
-def _is_tst_or_xml_file(fname):
+def _is_tst_or_xml_file(fname: str) -> bool:
     """Returns True if the extension of fname is '.xml' or '.tst'."""
     assert isinstance(fname, str)
     ext = fname.split(".")[-1]
     return ext in ("tst", "xml")
 
 
-def _is_escaped(lines, pos):
+def _is_escaped(lines: str, pos: int) -> Union[bool, re.Match, None]:
     assert isinstance(lines, str)
     assert isinstance(pos, int)
     assert 0 <= pos < len(lines)
@@ -98,7 +99,7 @@ def _is_escaped(lines, pos):
     return _ESCAPE_PATTERN.search(lines[start + 1 : pos][::-1])
 
 
-def _is_double_quote_in_char(line, pos):
+def _is_double_quote_in_char(line: str, pos: int) -> bool:
     assert isinstance(line, str)
     assert isinstance(pos, int)
     assert 0 <= pos < len(line)
@@ -110,7 +111,9 @@ def _is_double_quote_in_char(line, pos):
     )
 
 
-def _is_in_string(lines, pos):
+def _is_in_string(lines: str, pos: int) -> bool:
+    assert isinstance(lines, str)
+    assert isinstance(pos, int)
     start = lines.rfind("\n", 0, pos)
     line = re.sub(r"\\.", "", lines[start:pos])
     return line.count('"') % 2 == 1 or line.count("'") % 2 == 1
@@ -121,7 +124,7 @@ def _is_in_string(lines, pos):
 ###############################################################################
 
 
-def _warn_or_error(fname, linenum, msg, threshold):
+def _warn_or_error(fname: str, linenum: int, msg: str, threshold: int) -> None:
     if not _SILENT:
         assert isinstance(fname, str)
         assert isinstance(linenum, int)
@@ -130,31 +133,25 @@ def _warn_or_error(fname, linenum, msg, threshold):
         sys.stderr.write(f"{fname}:{linenum + 1}: {msg} [{threshold}]\n")
 
 
-def _warn(fname, linenum, msg):
+def _warn(fname: str, linenum: int, msg: str) -> None:
     _warn_or_error(fname, linenum, msg, 0)
 
 
-def _error(fname, linenum, msg):
+def _error(fname: str, linenum: int, msg: str) -> None:
     _warn_or_error(fname, linenum, msg, 1)
     sys.exit("Aborting!")
 
 
-def _info_statement(msg):
-    if not _SILENT:
-        assert isinstance(msg, str)
-        sys.stdout.write(f"\033[40;38;5;82m{msg}\033[0m\n")
-
-
-def _info_action(msg):
+def _info_action(msg: str) -> None:
     if not _SILENT:
         assert isinstance(msg, str)
         sys.stdout.write(f"\033[33m{msg}\033[0m\n")
 
 
-def _info_verbose(msg):
+def _info_verbose(msg: str) -> None:
     if not _SILENT and _VERBOSE:
         assert isinstance(msg, str)
-        sys.stdout.write(f"\033[40;38;5;208m{msg}\033[0m\n")
+        sys.stdout.write(f"\033[2m{msg}\033[0m\n")
 
 
 ###############################################################################
@@ -167,16 +164,17 @@ class Rule:  # pylint: disable=too-few-public-methods
     Base class for rules.
 
     A rule is a subclass of this class which has a __call__ method that returns
-    TODO
+    Tuple[int, str] where the \"int\" is the number of warnings issued, and where
+    the \"str\" is the lines of the file on which the rules are being applied.
     """
 
-    def __init__(self, name=None, code=None):
+    def __init__(self, name: Optional[str] = None, code: Optional[str] = None):
         assert isinstance(name, str) or (name is None and code is None)
         assert isinstance(code, str) or (name is None and code is None)
         self.name = name
         self.code = code
 
-    def reset(self):
+    def reset(self) -> None:
         """
         Reset the rule.
 
@@ -196,13 +194,13 @@ class WarnRegexBase(Rule):
 
     def __init__(  # pylint: disable=too-many-arguments, dangerous-default-value
         self,
-        name,
-        code,
-        pattern,
-        warning_msg,
-        exceptions=[],
-        skip=lambda fname: False,
-    ):
+        name: str,
+        code: str,
+        pattern: str,
+        warning_msg: str,
+        exceptions: List[str] = [],
+        skip: Callable[[str], bool] = lambda _: False,
+    ) -> None:
         Rule.__init__(self, name, code)
         assert isinstance(pattern, str)
         assert isinstance(warning_msg, str)
@@ -215,7 +213,7 @@ class WarnRegexBase(Rule):
         self._exceptions = [re.compile(e) for e in exceptions]
         self._skip = skip
 
-    def _match(self, line):
+    def _match(self, line: str) -> Union[int, None]:
         exception_group = self._exception_group
         it = self._pattern.finditer(line)
         for x in it:
@@ -235,7 +233,7 @@ class WarnRegexBase(Rule):
                 return x.start()
         return None
 
-    def skip(self, fname):
+    def skip(self, fname: str) -> bool:
         """
         Returns True if this rule should not be applied to fname.
         """
@@ -256,7 +254,9 @@ class ReplaceAnnoyUTF8Chars(Rule):
     currently does not.
     """
 
-    def __init__(self, name=None, code=None):
+    def __init__(
+        self, name: Optional[str] = None, code: Optional[str] = None
+    ) -> None:
         Rule.__init__(self, name, code)
         self._chars = {
             "\xc2\x82": ",",  # High code comma
@@ -280,16 +280,20 @@ class ReplaceAnnoyUTF8Chars(Rule):
             "\xc2\xbe": "3/4",  # three quarters
             "\xca\xbf": "\x27",  # c-single quote
             "\xcc\xa8": "",  # modifier - under curve
-            "\xcc\xb1": "",
-        }  # modifier - under line
+            "\xcc\xb1": "",  # modifier - under line
+        }
 
-    def __call__(self, fname, lines, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
 
         # Remove annoying characters
-        def replace_chars(match):  # pylint: disable=missing-docstring
+        def replace_chars(
+            match: re.Match,
+        ) -> str:  # pylint: disable=missing-docstring
             char = match.group(0)
             return self._chars[char]
 
@@ -303,10 +307,12 @@ class ReplaceAnnoyUTF8Chars(Rule):
 
 class WarnRegexFile(WarnRegexBase):
     """
-    A rule that issues a warning if everytime a regex is matched in a file.
+    A rule that issues a warning if a regex is matched in a file.
     """
 
-    def __call__(self, fname, lines, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -318,13 +324,51 @@ class WarnRegexFile(WarnRegexBase):
         return nr_warnings, lines
 
 
+class GlobalRules:
+    """
+    A class for containing rules that should be applied to all the input
+    files, such as AnalyseDecls. This is an experimental feature.
+    """
+
+    def __init__(self):
+        self.gd_files = {}
+        self.gi_files = ""
+        self.xml_files = ""
+        self._rules = []
+        self._global_rules = []
+
+    def add_rule(self, global_rule: Rule) -> None:
+        """Adds a rule to the global rules to be applied."""
+        self._global_rules.append(global_rule)
+
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        if fname.split(".")[-1] == "gd":
+            self.gd_files[fname] = lines
+        elif fname.split(".")[-1] == "gi":
+            self.gi_files += lines
+        elif fname.split(".")[-1] == "xml":
+            self.xml_files += lines
+        return nr_warnings, lines
+
+    def apply_rules(self, nr_warnings: int):
+        """Applies all the currently added global rules."""
+        for global_rule in self._global_rules:
+            nr_warnings = global_rule(self, nr_warnings)
+        return nr_warnings
+
+
 class AnalyseDecls(Rule):
     """
     A global rule that detects operations/attributes/properties that are
     declared but not documented or not implemented.
     """
 
-    def __init__(self, name, code):
+    def __init__(self, name: str, code: str) -> None:
         Rule.__init__(self, name, code)
         self._patterns = [
             (
@@ -349,7 +393,7 @@ class AnalyseDecls(Rule):
             ),
         ]
 
-    def __call__(self, global_rules, nr_warnings):
+    def __call__(self, global_rules: GlobalRules, nr_warnings: int) -> int:
         for gd_fname, gd_file in global_rules.gd_files.items():
             for decl, name in self._patterns:
                 for decl_match in decl.finditer(gd_file):
@@ -386,40 +430,6 @@ class AnalyseDecls(Rule):
         return nr_warnings
 
 
-class GlobalRules:
-    """A class for containing rules that should be applied to all the input
-    files, such as AnalyseDecls. This is an experimental feature."""
-
-    def __init__(self):
-        self.gd_files = {}
-        self.gi_files = ""
-        self.xml_files = ""
-        self._rules = []
-        self._global_rules = []
-
-    def add_rule(self, global_rule):
-        """Adds a rule to the global rules to be applied."""
-        self._global_rules.append(global_rule)
-
-    def __call__(self, fname, lines, nr_warnings=0):
-        assert isinstance(fname, str)
-        assert isinstance(lines, str)
-        assert isinstance(nr_warnings, int)
-        if fname.split(".")[-1] == "gd":
-            self.gd_files[fname] = lines
-        elif fname.split(".")[-1] == "gi":
-            self.gi_files += lines
-        elif fname.split(".")[-1] == "xml":
-            self.xml_files += lines
-        return nr_warnings, lines
-
-    def apply_rules(self, nr_warnings):
-        """Applies all the currently added global rules."""
-        for global_rule in self._global_rules:
-            nr_warnings = global_rule(self, nr_warnings)
-        return nr_warnings
-
-
 class ReplaceComments(Rule):
     """
     Replace between '#+' and the end of a line by '#+' and as many '@' as there
@@ -429,7 +439,9 @@ class ReplaceComments(Rule):
     This rule does not return any warnings.
     """
 
-    def __call__(self, fname, lines, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -459,13 +471,13 @@ class ReplaceBetweenDelimiters(Rule):
     This rule does not return any warnings.
     """
 
-    def __init__(self, name, code, delim1, delim2):
+    def __init__(self, name: str, code: str, delim1: str, delim2: str) -> None:
         Rule.__init__(self, name, code)
         assert isinstance(delim1, str)
         assert isinstance(delim2, str)
         self._delims = [re.compile(delim1), re.compile(delim2)]
 
-    def __find_next(self, which, lines, start):
+    def __find_next(self, which: int, lines: str, start: int) -> int:
         assert which in (0, 1)
         assert isinstance(lines, str)
         assert isinstance(start, int)
@@ -480,7 +492,9 @@ class ReplaceBetweenDelimiters(Rule):
             match = delim.search(lines, match.start() + len(delim.pattern))
         return -1 if match is None else match.start()
 
-    def __call__(self, fname, lines, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -511,14 +525,18 @@ class ReplaceOutputTstOrXMLFile(Rule):
     '@''s.
     """
 
-    def __init__(self, name=None, code=None):
+    def __init__(
+        self, name: Optional[str] = None, code: Optional[str] = None
+    ) -> None:
         Rule.__init__(self, name, code)
         self._consuming = False
         self._sol_p = re.compile(r"(^|\n)gap>\s*")
         self._eol_p = re.compile(r"($|\n)")
         self._rep_p = re.compile(r"[^\n]")
 
-    def __call__(self, fname, lines, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -542,7 +560,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     This rule checks if there are unused local variables in a function.
     """
 
-    def __init__(self, name=None, code=None):
+    def __init__(
+        self, name: Optional[str] = None, code: Optional[str] = None
+    ) -> None:
         Rule.__init__(self, name, code)
         self.reset()
 
@@ -556,7 +576,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._ws2_p = re.compile(r"\n[ \t\r\f\v]+")
         self._rec_p = re.compile(r"\brec\(")
 
-    def reset(self):
+    def reset(self) -> None:
         self._depth = -1
         self._func_args = []
         self._declared_lvars = []
@@ -564,7 +584,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._used_lvars = []
         self._func_start_pos = []
 
-    def _remove_recs_and_whitespace(self, lines):
+    def _remove_recs_and_whitespace(self, lines: str) -> str:
         # Remove almost all whitespace
         lines = re.sub(self._ws1_p, " ", lines)
         lines = re.sub(self._ws2_p, "\n", lines)
@@ -593,7 +613,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         assert len(stack) == 0
         return lines
 
-    def _start_function(self, fname, lines, pos, nr_warnings):
+    def _start_function(
+        self, fname: str, lines: str, pos: int, nr_warnings: int
+    ) -> Tuple[int, int]:
         self._depth += 1
 
         assert self._depth == len(self._func_args)
@@ -641,7 +663,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 args.add(var)
         return end + 1, nr_warnings
 
-    def _end_function(self, fname, lines, pos, nr_warnings):
+    def _end_function(
+        self, fname: str, lines: str, pos: int, nr_warnings: int
+    ) -> Tuple[int, int]:
         if len(self._declared_lvars) == 0:
             _error(fname, lines.count("\n", 0, pos), "'end' outside function")
 
@@ -670,9 +694,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
 
         if len(decl_lvars) != 0:
             decl_lvars = list(decl_lvars)
-            msg = "Unused local variables: " + decl_lvars[0]
-            for x in decl_lvars[1:]:
-                msg += ", " + x
+            msg = f"Unused local variables: {', '.join(decl_lvars)}"
             linenum = lines.count("\n", 0, self._func_start_pos[-1])
             _warn(fname, linenum, msg)
             nr_warnings += 1
@@ -681,7 +703,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._func_start_pos.pop()
         return pos + len("end"), nr_warnings
 
-    def _add_declared_lvars(self, fname, lines, pos, nr_warnings):
+    def _add_declared_lvars(
+        self, fname: str, lines: str, pos: int, nr_warnings: int
+    ) -> Tuple[int, int]:
         end = lines.find(";", pos)
         lvars = self._declared_lvars[self._depth]
         args = self._func_args[self._depth]
@@ -711,7 +735,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 lvars.add(var)
         return end, nr_warnings
 
-    def _find_lvars(self, fname, lines, pos, nr_warnings):
+    def _find_lvars(
+        self, fname: str, lines: str, pos: int, nr_warnings: int
+    ) -> Tuple[int, int]:
         end = self._end_p.search(lines, pos + 1)
         func = self._function_p.search(lines, pos + 1)
         if end is None and func is None:
@@ -731,7 +757,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             u_lvars |= set(self._use_var_p.findall(lines, pos, end))
         return end, nr_warnings
 
-    def __call__(self, fname, lines, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -773,11 +801,15 @@ class LineTooLong(Rule):
     This rule does not modify the line.
     """
 
-    def __init__(self, name=None, code=None):
+    def __init__(
+        self, name: Optional[str] = None, code: Optional[str] = None
+    ) -> None:
         Rule.__init__(self, name, code)
         self._cols = _GLOB_CONFIG["columns"]
 
-    def __call__(self, fname, lines, linenum, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, linenum: int, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         if _is_tst_or_xml_file(fname):
             return nr_warnings, lines
         if len(lines[linenum]) - 1 > self._cols:
@@ -795,7 +827,9 @@ class WarnRegexLine(WarnRegexBase):
     Warn if regex matches.
     """
 
-    def __call__(self, fname, lines, linenum, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: str, linenum: int, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, list)
         assert isinstance(linenum, int)
@@ -814,31 +848,22 @@ class WhitespaceOperator(WarnRegexLine):
     operator is incorrect.
     """
 
-    def __init__(self, name, code, op, exceptions=[]):  # pylint: disable=W0102
+    def __init__(
+        self, name: str, code: str, op: str, exceptions: List[str] = []
+    ):  # pylint: disable=W0102
         WarnRegexLine.__init__(self, name, code, "", "")
         assert isinstance(op, str)
         assert op[0] != "(" and op[-1] != ")"
         assert exceptions is None or isinstance(exceptions, list)
         assert all(isinstance(e, str) for e in exceptions)
         gop = "(" + op + ")"
-        pattern = (
-            r"(\S"
-            + gop
-            + "|"
-            + gop
-            + r"\S|\s{2,}"
-            + gop
-            + "|"
-            + gop
-            + r"\s{2,})"
-        )
+        pattern = rf"(\S{gop}|{gop}\S|\s{{2,}}{gop}|{gop}\s{{2,}})"
         self._pattern = re.compile(pattern)
         self._warning_msg = "Wrong whitespace around operator " + op.replace(
             "\\", ""
         )
         exceptions = [e.replace(op, "(" + op + ")") for e in exceptions]
         self._exceptions = [re.compile(e) for e in exceptions]
-
         self._exception_group = op.replace("\\", "")
 
 
@@ -849,8 +874,8 @@ class UnalignedPatterns(Rule):
     """
 
     def __init__(  # pylint: disable=too-many-arguments
-        self, name, code, pattern, group, msg
-    ):
+        self, name: str, code: str, pattern: str, group: int, msg: str
+    ) -> None:
         Rule.__init__(self, name, code)
         assert isinstance(pattern, str)
         assert isinstance(group, int)
@@ -860,7 +885,9 @@ class UnalignedPatterns(Rule):
         self._group = group
         self._msg = msg
 
-    def __call__(self, fname, lines, linenum, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: List[str], linenum: int, nr_warnings: int = 0
+    ) -> Tuple[int, List[str]]:
         assert isinstance(fname, str)
         assert isinstance(lines, list)
         assert isinstance(linenum, int)
@@ -890,7 +917,7 @@ class Indentation(Rule):
     required.
     """
 
-    def __init__(self, name, code):
+    def __init__(self, name: str, code: str) -> None:
         Rule.__init__(self, name, code)
         ind = _GLOB_CONFIG["indentation"]
         self._expected = 0
@@ -910,7 +937,9 @@ class Indentation(Rule):
         self._blank = re.compile(r"^\s*$")
         self._msg = "Bad indentation: found %d but expected at least %d"
 
-    def __call__(self, fname, lines, linenum, nr_warnings=0):
+    def __call__(
+        self, fname: str, lines: List[str], linenum: int, nr_warnings: int = 0
+    ) -> Tuple[int, List[str]]:
         assert isinstance(fname, str)
         assert isinstance(lines, list)
         assert isinstance(linenum, int)
@@ -938,7 +967,7 @@ class Indentation(Rule):
                 self._expected += pair[1]
         return nr_warnings, lines
 
-    def _get_indent_level(self, line):
+    def _get_indent_level(self, line: str) -> int:
         indent = self._indent.search(line)
         assert indent
         return len(indent.group(1))
@@ -952,7 +981,7 @@ class Indentation(Rule):
 ###############################################################################
 
 
-def _parse_args(kwargs):
+def _parse_args(kwargs: Dict[str, bool]) -> argparse.Namespace:
     # pylint: disable=too-many-branches, too-many-statements, global-statement
     global _SILENT, _VERBOSE
     parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
@@ -979,7 +1008,7 @@ def _parse_args(kwargs):
         "--disable",
         nargs="?",
         type=str,
-        help="gaplint rules " + "(name or code) to disable (default: None)",
+        help="gaplint rules (name or code) to disable (default: None)",
     )
     parser.set_defaults(disable="")
     # TODO an --enable option to enable only the specified rules
@@ -1007,12 +1036,11 @@ def _parse_args(kwargs):
         help=" (default: False)",
     )
     parser.set_defaults(verbose=False)
-
-    version = pkg_resources.require("gaplint")[0].version
+    vers_num = version("gaplint")
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s version {version}",
+        version=f"%(prog)s version {vers_num}",
     )
 
     parser.add_argument(
@@ -1023,7 +1051,13 @@ def _parse_args(kwargs):
     )
     parser.set_defaults(enable_experimental=False)
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+
+    if len(unknown) != 0:
+        sys.stderr.write(
+            f"Unknown command line option{'' if len(unknown) == 1 else 's'}: {unknown}\n"
+        )
+        sys.exit("Aborting!")
 
     if "silent" in kwargs:
         _SILENT = kwargs["silent"]
@@ -1065,12 +1099,12 @@ def _parse_args(kwargs):
     files = []
     for fname in args.files:
         if not (exists(fname) and isfile(fname)):
-            _info_action("SKIPPING " + fname + ": cannot open for reading")
+            _info_action(f"SKIPPING {fname}: cannot open for reading")
         elif (
             fname.split(".")[-1] not in _VALID_EXTENSIONS
             and ".".join(fname.split(".")[-2:]) not in _VALID_EXTENSIONS
         ):
-            _info_action("IGNORING " + fname + ": not a valid file extension")
+            _info_action(f"IGNORING {fname}: not a valid file extension")
         else:
             files.append(fname)
     args.files = files
@@ -1083,7 +1117,9 @@ def _parse_args(kwargs):
 ###############################################################################
 
 
-def __init_config_and_suppressions_command_line(args):
+def __init_config_and_suppressions_command_line(
+    args: argparse.Namespace,
+) -> None:
     assert isinstance(args, argparse.Namespace)
     assert hasattr(args, "files")
     assert hasattr(args, "config")
@@ -1098,7 +1134,7 @@ def __init_config_and_suppressions_command_line(args):
         _GLOB_SUPPRESSIONS[name_or_code] = None
 
 
-def __config_yml_path(dir_path):
+def __config_yml_path(dir_path: str) -> Union[None, str]:
     """
     Recursive function that takes the path of a directory to search and
     searches for the gaplint.yml config script. If the script is not found the
@@ -1108,6 +1144,7 @@ def __config_yml_path(dir_path):
     root directory has been searched (script not found, returns None) - base
     cases A, B, C.
     """
+    assert isinstance(dir_path, str)
     assert isdir(dir_path)
     entries = listdir(dir_path)
 
@@ -1123,7 +1160,7 @@ def __config_yml_path(dir_path):
     return __config_yml_path(pardir_path)  # recursive call
 
 
-def __init_config_and_suppressions_yml():
+def __init_config_and_suppressions_yml() -> None:
     config_yml_fname = __config_yml_path(os.getcwd())
     if config_yml_fname is None:
         return
@@ -1161,7 +1198,7 @@ def __init_config_and_suppressions_yml():
                         )
 
 
-def __verify_glob_suppressions():
+def __verify_glob_suppressions() -> None:
     global _GLOB_SUPPRESSIONS  # pylint: disable=global-variable-not-assigned, global-statement
     delete = []
     for name_or_code in _GLOB_SUPPRESSIONS:
@@ -1198,7 +1235,7 @@ def __verify_glob_suppressions():
 ###############################################################################
 
 
-def __init_rules(args):
+def __init_rules(args: argparse.Namespace) -> None:
     global _EXPERIMENTAL_FILE_RULES, _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
     _EXPERIMENTAL_FILE_RULES = [
         WarnRegexFile(
@@ -1390,8 +1427,13 @@ def __init_rules(args):
 ###############################################################################
 
 
-def __is_valid_rule_name_or_code(name_or_code, fname, linenum):
-    # TODO assertions
+def __is_valid_rule_name_or_code(
+    name_or_code: str, fname: str, linenum: int
+) -> bool:
+    assert isinstance(name_or_code, str)
+    assert isinstance(fname, str)
+    assert isinstance(linenum, int)
+
     if name_or_code == "all":
         return True
     for rule in _LINE_RULES + _FILE_RULES:
@@ -1409,9 +1451,13 @@ def __is_valid_rule_name_or_code(name_or_code, fname, linenum):
     return False
 
 
-def __add_file_suppressions(names_or_codes, fname, linenum):
+def __add_file_suppressions(
+    names_or_codes: List[str], fname: str, linenum: int
+) -> None:
     assert isinstance(names_or_codes, list)
-    #  TODO add more assertions
+    assert all(isinstance(x, str) for x in names_or_codes)
+    assert isinstance(fname, str)
+    assert isinstance(linenum, int)
 
     for name_or_code in names_or_codes:
         assert isinstance(name_or_code, str)
@@ -1421,9 +1467,13 @@ def __add_file_suppressions(names_or_codes, fname, linenum):
             _FILE_SUPPRESSIONS[fname][name_or_code] = None
 
 
-def __add_line_suppressions(names_or_codes, fname, linenum):
+def __add_line_suppressions(
+    names_or_codes: List[str], fname: str, linenum: int
+) -> None:
     assert isinstance(names_or_codes, list)
-    #  TODO add more assertions
+    assert all(isinstance(x, str) for x in names_or_codes)
+    assert isinstance(fname, str)
+    assert isinstance(linenum, int)
 
     for name_or_code in names_or_codes:
         assert isinstance(name_or_code, str)
@@ -1437,7 +1487,7 @@ def __add_line_suppressions(names_or_codes, fname, linenum):
 
 # FIXME this should be a line rule called before any other line rule, to avoid
 # reading the files more than once
-def __init_file_and_line_suppressions(args):
+def __init_file_and_line_suppressions(args: argparse.Namespace) -> None:
     assert isinstance(args, argparse.Namespace)
     assert hasattr(args, "files")
 
@@ -1480,7 +1530,9 @@ def __init_file_and_line_suppressions(args):
             linenum += 1
 
 
-def _is_rule_suppressed(fname, linenum, rule):
+def _is_rule_suppressed(
+    fname: str, linenum: int, rule: Union[Rule, GlobalRules]
+) -> bool:
     """
     Takes a filename, line number and rule code. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
@@ -1491,7 +1543,8 @@ def _is_rule_suppressed(fname, linenum, rule):
 
     if isinstance(rule, GlobalRules):
         return False
-
+    assert rule.code is not None
+    assert rule.name is not None
     if rule.code[0] == "M":
         return False
     if (
@@ -1523,8 +1576,19 @@ def _is_rule_suppressed(fname, linenum, rule):
 ###############################################################################
 
 
+def _verbose_msg_per_file(args: argparse.Namespace, fname: str, i: int) -> None:
+    num_files = len(args.files)
+    num_digits = len(str(num_files))
+    prefix_len = max(len(x) for x in args.files)
+    index_str = str(i + 1).rjust(num_digits)
+
+    _info_verbose(
+        f"Linting {fname.ljust(prefix_len, '.')}.[{index_str}/{num_files}]"
+    )
+
+
 # pylint: disable=too-many-branches
-def main(**kwargs):
+def main(**kwargs) -> None:
     """
     This function applies all rules in this module to the files specified by
     the keywords argument files.
@@ -1565,14 +1629,14 @@ def main(**kwargs):
                 sys.stderr.write(f"Total errors found: {nr_warnings}\n")
             sys.exit("Too many warnings, giving up!")
 
-    for fname in args.files:
-        _info_verbose(f"Linting {fname} . . .")
+    for i, fname in enumerate(args.files):
+        _verbose_msg_per_file(args, fname, i)
         try:
             with open(fname, "r", encoding="utf-8") as ffile:
                 lines = ffile.read()
         except IOError:
-            _info_action("SKIPPING " + fname + ": cannot open for reading")
-            return
+            _info_action(f"SKIPPING {fname}: cannot open for reading")
+            continue
 
         nr_warnings = 0
         for rule in _FILE_RULES:
