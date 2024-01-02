@@ -674,6 +674,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         ass_lvars = self._assigned_lvars.pop()
         decl_lvars = self._declared_lvars.pop()
         use_lvars = self._used_lvars.pop()
+        func_args = self._func_args.pop()
 
         if len(self._used_lvars) > 0:
             self._used_lvars[-1] |= use_lvars  # union
@@ -682,6 +683,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         ass_lvars &= decl_lvars  # intersection
         decl_lvars -= ass_lvars  # difference
         decl_lvars -= use_lvars  # difference
+        func_args -= use_lvars  # difference
 
         if len(ass_lvars) != 0:
             ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
@@ -699,7 +701,14 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             _warn(fname, linenum, msg)
             nr_warnings += 1
 
-        self._func_args.pop()  # TODO do something with these
+        func_args = [arg for arg in func_args if arg != "_"]
+        if len(func_args) != 0:
+            msg = f"Unused function arguments: {', '.join(func_args)}"
+            linenum = lines.count("\n", 0, self._func_start_pos[-1])
+            if not _is_rule_suppressed(fname, linenum + 1, self):
+                _warn(fname, linenum, msg)
+                nr_warnings += 1
+
         self._func_start_pos.pop()
         return pos + len("end"), nr_warnings
 
