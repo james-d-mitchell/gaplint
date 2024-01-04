@@ -1278,6 +1278,12 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"(\w+)\s*:=[^;]*;\n\s*return\s+(\1);",
             "Pointless assignment immediately returned",
         ),
+        WarnRegexFile(
+            "1-line-function",
+            "W036",
+            r"\bfunction\b.*?\n.*?\breturn\b.*?\n\bend\b",
+            "One line function could be a lambda",
+        ),
     ]
     if args.enable_experimental:
         _FILE_RULES += _EXPERIMENTAL_FILE_RULES
