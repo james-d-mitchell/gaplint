@@ -1710,7 +1710,7 @@ def main(**kwargs) -> None:
         lines = lines.split("\n")
         for linenum in range(len(lines)):
             for rule in _LINE_RULES:
-                if not _is_rule_suppressed(fname, linenum, rule):
+                if not _is_rule_suppressed(fname, linenum + 1, rule):
                     nr_warnings, lines = rule(
                         fname, lines, linenum, nr_warnings
                     )
