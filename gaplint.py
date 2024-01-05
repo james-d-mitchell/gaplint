@@ -124,6 +124,7 @@ def _is_in_string(lines: str, pos: int) -> bool:
 ###############################################################################
 
 
+# TODO report rule code and/or name here too
 def _warn_or_error(fname: str, linenum: int, msg: str, threshold: int) -> None:
     if not _SILENT:
         assert isinstance(fname, str)
@@ -702,9 +703,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
 
         if len(ass_lvars) != 0:
             ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
-            msg = "Variables assigned but never used: " + ass_lvars[0]
-            for x in ass_lvars[1:]:
-                msg += ", " + x
+            msg = f"Variables assigned but never used: {', '.join(ass_lvars)}"
             linenum = lines.count("\n", 0, self._func_start_pos[-1])
             _warn(fname, linenum, msg)
             nr_warnings += 1
@@ -1391,13 +1390,13 @@ def __init_rules(args: argparse.Namespace) -> None:
             "tabs",
             "W017",
             r"\t",
-            "There are tabs in this line, " + "replace with spaces",
+            "There are tabs in this line, replace with spaces",
         ),
         WarnRegexLine(
             "function-local-same-line",
             "W018",
             r"function\W.*\Wlocal\W",
-            "Keywords 'function' and 'local' in the" + " same line",
+            "Keywords 'function' and 'local' in the same line",
         ),
         WarnRegexLine(
             "whitespace-op-minus",
@@ -1564,7 +1563,7 @@ def _is_rule_suppressed(
     fname: str, linenum: int, rule: Union[Rule, GlobalRules]
 ) -> bool:
     """
-    Takes a filename, line number and rule code. Returns True if the rule is
+    Takes a filename, line number, and rule. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     """
     assert isinstance(fname, str)
@@ -1589,6 +1588,7 @@ def _is_rule_suppressed(
         or rule.name in _FILE_SUPPRESSIONS[fname]
     ):
         return True
+
     if (
         fname in _LINE_SUPPRESSIONS
         and linenum in _LINE_SUPPRESSIONS[fname]
