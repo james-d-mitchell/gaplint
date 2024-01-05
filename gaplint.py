@@ -223,9 +223,9 @@ class WarnRegexBase(Rule):
         self._exceptions = [re.compile(e) for e in exceptions]
         self._skip = skip
 
-    def _match(self, line: str) -> Union[int, None]:
+    def _match(self, line: str, start: int = 0) -> Union[int, None]:
         exception_group = self._exception_group
-        it = self._pattern.finditer(line)
+        it = self._pattern.finditer(line, start)
         for x in it:
             exception = False
             if len(self._exceptions) > 0:
@@ -326,11 +326,16 @@ class WarnRegexFile(WarnRegexBase):
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
-        if not _is_tst_or_xml_file(fname):
-            match = self._match(lines)
-            if match:
-                _warn(fname, lines.count("\n", 0, match), self._warning_msg)
-                return nr_warnings + 1, lines
+        if _is_tst_or_xml_file(fname):
+            return nr_warnings, lines
+
+        match = self._match(lines)
+        while match is not None:
+            line_num = lines.count("\n", 0, match)
+            if not _is_rule_suppressed(fname, line_num + 1, self):
+                _warn(fname, line_num, self._warning_msg)
+                nr_warnings += 1
+                match = self._match(lines, match + len(self._pattern.pattern))
         return nr_warnings, lines
 
 
