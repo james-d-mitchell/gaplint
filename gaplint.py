@@ -1260,6 +1260,8 @@ def __verify_glob_suppressions() -> None:
 
 def __init_rules(args: argparse.Namespace) -> None:
     global _EXPERIMENTAL_FILE_RULES, _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
+    if len(_FILE_RULES) != 0:
+        return
     _EXPERIMENTAL_FILE_RULES = [
         WarnRegexFile(
             "combine-ifs-with-elif",
