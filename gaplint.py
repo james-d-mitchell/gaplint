@@ -1404,6 +1404,36 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"(return|\^|\*|,|=|\.|>) - \d",
             "Wrong whitespace around operator -",
         ),
+        WarnRegexLine(
+            "pointless-lambda",
+            "W037",
+            r"\b(\w+)\b\s*->\s*\b\w+\(\1\)\s*\)",
+            "Replace x -> f(x) by f",
+        ),
+        WarnRegexLine(
+            "use-return-true",
+            "W038",
+            r"\b(\w+)\b\s*->\s*\btrue\b\s*\)",
+            "Replace x -> true by ReturnTrue",
+        ),
+        WarnRegexLine(
+            "use-return-false",
+            "W039",
+            r"\b(\w+)\b\s*->\s*\bfalse\b\s*\)",
+            "Replace x -> false by ReturnFalse",
+        ),
+        WarnRegexLine(
+            "use-return-fail",
+            "W040",
+            r"\b(\w+)\b\s*->\s*\bfail\b\s*\)",
+            "Replace x -> fail by ReturnFail",
+        ),
+        WarnRegexLine(
+            "use-remove-not-unbind",
+            "W041",
+            r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
+            "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
+        ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
             "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
