@@ -168,9 +168,19 @@ class Rule:  # pylint: disable=too-few-public-methods
     the \"str\" is the lines of the file on which the rules are being applied.
     """
 
+    _all_codes = set()
+    _all_names = set()
+
     def __init__(self, name: Optional[str] = None, code: Optional[str] = None):
         assert isinstance(name, str) or (name is None and code is None)
         assert isinstance(code, str) or (name is None and code is None)
+        if __debug__:
+            if code is not None and code in Rule._all_codes:
+                raise ValueError(f"Duplicate rule code {code}")
+            Rule._all_codes.add(code)
+            if name is not None and code in Rule._all_names:
+                raise ValueError(f"Duplicate rule name {name}")
+            Rule._all_names.add(name)
         self.name = name
         self.code = code
 
@@ -1249,7 +1259,7 @@ def __init_rules(args: argparse.Namespace) -> None:
     _EXPERIMENTAL_FILE_RULES = [
         WarnRegexFile(
             "combine-ifs-with-elif",
-            "W034",
+            "W035",
             r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)"
             + r"(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
             "Combine multiple ifs using elif",
@@ -1638,6 +1648,10 @@ def main(**kwargs) -> None:
     total_nr_warnings = 0
     max_warnings = _GLOB_CONFIG["max_warnings"]
 
+    if args.enable_experimental:
+        global_rules = _FILE_RULES[2]
+        global_rules.add_rule(AnalyseDecls("analyse-decls", "W034"))
+
     def too_many_warnings(nr_warnings):
         if nr_warnings >= max_warnings:
             if not _SILENT:
@@ -1671,8 +1685,6 @@ def main(**kwargs) -> None:
         total_nr_warnings += nr_warnings
 
     if args.enable_experimental:
-        global_rules = _FILE_RULES[2]
-        global_rules.add_rule(AnalyseDecls("analyse-decls", "W034"))
         total_nr_warnings = global_rules.apply_rules(total_nr_warnings)
 
     if not _SILENT:
