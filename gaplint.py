@@ -1265,7 +1265,7 @@ def __init_rules(args: argparse.Namespace) -> None:
     _EXPERIMENTAL_FILE_RULES = [
         WarnRegexFile(
             "combine-ifs-with-elif",
-            "W035",
+            "W998",
             r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)"
             + r"(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
             "Combine multiple ifs using elif",
@@ -1296,7 +1296,7 @@ def __init_rules(args: argparse.Namespace) -> None:
         ),
         WarnRegexFile(
             "1-line-function",
-            "W036",
+            "W034",
             r"\bfunction\b.*?\n.*?\breturn\b.*?\n\bend\b",
             "One line function could be a lambda",
         ),
@@ -1408,31 +1408,31 @@ def __init_rules(args: argparse.Namespace) -> None:
         ),
         WarnRegexLine(
             "pointless-lambda",
-            "W037",
+            "W035",
             r"\b(\w+)\b\s*->\s*\b\w+\(\1\)\s*\)",
             "Replace x -> f(x) by f",
         ),
         WarnRegexLine(
             "use-return-true",
-            "W038",
+            "W036",
             r"\b(\w+)\b\s*->\s*\btrue\b\s*\)",
             "Replace x -> true by ReturnTrue",
         ),
         WarnRegexLine(
             "use-return-false",
-            "W039",
+            "W037",
             r"\b(\w+)\b\s*->\s*\bfalse\b\s*\)",
             "Replace x -> false by ReturnFalse",
         ),
         WarnRegexLine(
             "use-return-fail",
-            "W040",
+            "W038",
             r"\b(\w+)\b\s*->\s*\bfail\b\s*\)",
             "Replace x -> fail by ReturnFail",
         ),
         WarnRegexLine(
             "use-remove-not-unbind",
-            "W041",
+            "W039",
             r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
             "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
         ),
@@ -1687,7 +1687,7 @@ def main(**kwargs) -> None:
 
     if args.enable_experimental:
         global_rules = _FILE_RULES[2]
-        global_rules.add_rule(AnalyseDecls("analyse-decls", "W034"))
+        global_rules.add_rule(AnalyseDecls("analyse-decls", "W999"))
 
     def too_many_warnings(nr_warnings):
         if nr_warnings >= max_warnings:
