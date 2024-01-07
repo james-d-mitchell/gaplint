@@ -156,7 +156,7 @@ def _info_verbose(msg: str) -> None:
 
 
 ###############################################################################
-# Rules: a rule is just a function or callable class.
+# Rules: a rule must have Rule as a base class.
 ###############################################################################
 
 
@@ -252,92 +252,8 @@ class WarnRegexBase(Rule):
 
 
 ###############################################################################
-# File rules
+# Global rules
 ###############################################################################
-
-
-class ReplaceAnnoyUTF8Chars(Rule):
-    """
-    This rule replaces occurrences of annoying UTF characters from an entire
-    file by their ascii equivalent.
-
-    This could issue a warning rather than doing this replacement, but
-    currently does not.
-    """
-
-    def __init__(
-        self, name: Optional[str] = None, code: Optional[str] = None
-    ) -> None:
-        Rule.__init__(self, name, code)
-        self._chars = {
-            "\xc2\x82": ",",  # High code comma
-            "\xc2\x84": ",,",  # High code double comma
-            "\xc2\x85": "...",  # Triple dot
-            "\xc2\x88": "^",  # High carat
-            "\xc2\x91": "\x27",  # Forward single quote
-            "\xc2\x92": "\x27",  # Reverse single quote
-            "\xc2\x93": "\x22",  # Forward double quote
-            "\xc2\x94": "\x22",  # Reverse double quote
-            "\xc2\x95": " ",
-            "\xc2\x96": "-",  # High hyphen
-            "\xc2\x97": "--",  # Double hyphen
-            "\xc2\x99": " ",
-            "\xc2\xa0": " ",
-            "\xc2\xa6": "|",  # Split vertical bar
-            "\xc2\xab": "<<",  # Double less than
-            "\xc2\xbb": ">>",  # Double greater than
-            "\xc2\xbc": "1/4",  # one quarter
-            "\xc2\xbd": "1/2",  # one half
-            "\xc2\xbe": "3/4",  # three quarters
-            "\xca\xbf": "\x27",  # c-single quote
-            "\xcc\xa8": "",  # modifier - under curve
-            "\xcc\xb1": "",  # modifier - under line
-        }
-
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
-        assert isinstance(fname, str)
-        assert isinstance(lines, str)
-        assert isinstance(nr_warnings, int)
-
-        # Remove annoying characters
-        def replace_chars(
-            match: re.Match,
-        ) -> str:  # pylint: disable=missing-docstring
-            char = match.group(0)
-            return self._chars[char]
-
-        return (
-            nr_warnings,
-            re.sub(
-                "(" + "|".join(self._chars.keys()) + ")", replace_chars, lines
-            ),
-        )
-
-
-class WarnRegexFile(WarnRegexBase):
-    """
-    A rule that issues a warning if a regex is matched in a file.
-    """
-
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
-        assert isinstance(fname, str)
-        assert isinstance(lines, str)
-        assert isinstance(nr_warnings, int)
-        if _is_tst_or_xml_file(fname):
-            return nr_warnings, lines
-
-        match = self._match(lines)
-        while match is not None:
-            line_num = lines.count("\n", 0, match)
-            if not _is_rule_suppressed(fname, line_num + 1, self):
-                _warn(fname, line_num, self._warning_msg)
-                nr_warnings += 1
-                match = self._match(lines, match + len(self._pattern.pattern))
-        return nr_warnings, lines
 
 
 class GlobalRules:
@@ -444,6 +360,95 @@ class AnalyseDecls(Rule):
                         )
 
         return nr_warnings
+
+
+###############################################################################
+# File rules
+###############################################################################
+
+
+class ReplaceAnnoyUTF8Chars(Rule):
+    """
+    This rule replaces occurrences of annoying UTF characters from an entire
+    file by their ascii equivalent.
+
+    This could issue a warning rather than doing this replacement, but
+    currently does not.
+    """
+
+    def __init__(
+        self, name: Optional[str] = None, code: Optional[str] = None
+    ) -> None:
+        Rule.__init__(self, name, code)
+        self._chars = {
+            "\xc2\x82": ",",  # High code comma
+            "\xc2\x84": ",,",  # High code double comma
+            "\xc2\x85": "...",  # Triple dot
+            "\xc2\x88": "^",  # High carat
+            "\xc2\x91": "\x27",  # Forward single quote
+            "\xc2\x92": "\x27",  # Reverse single quote
+            "\xc2\x93": "\x22",  # Forward double quote
+            "\xc2\x94": "\x22",  # Reverse double quote
+            "\xc2\x95": " ",
+            "\xc2\x96": "-",  # High hyphen
+            "\xc2\x97": "--",  # Double hyphen
+            "\xc2\x99": " ",
+            "\xc2\xa0": " ",
+            "\xc2\xa6": "|",  # Split vertical bar
+            "\xc2\xab": "<<",  # Double less than
+            "\xc2\xbb": ">>",  # Double greater than
+            "\xc2\xbc": "1/4",  # one quarter
+            "\xc2\xbd": "1/2",  # one half
+            "\xc2\xbe": "3/4",  # three quarters
+            "\xca\xbf": "\x27",  # c-single quote
+            "\xcc\xa8": "",  # modifier - under curve
+            "\xcc\xb1": "",  # modifier - under line
+        }
+
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+
+        # Remove annoying characters
+        def replace_chars(
+            match: re.Match,
+        ) -> str:  # pylint: disable=missing-docstring
+            char = match.group(0)
+            return self._chars[char]
+
+        return (
+            nr_warnings,
+            re.sub(
+                "(" + "|".join(self._chars.keys()) + ")", replace_chars, lines
+            ),
+        )
+
+
+class WarnRegexFile(WarnRegexBase):
+    """
+    A rule that issues a warning if a regex is matched in a file.
+    """
+
+    def __call__(
+        self, fname: str, lines: str, nr_warnings: int = 0
+    ) -> Tuple[int, str]:
+        assert isinstance(fname, str)
+        assert isinstance(lines, str)
+        assert isinstance(nr_warnings, int)
+        if _is_tst_or_xml_file(fname):
+            return nr_warnings, lines
+
+        match = self._match(lines)
+        while match is not None:
+            line_num = lines.count("\n", 0, match)
+            if not _is_rule_suppressed(fname, line_num + 1, self):
+                _warn(fname, line_num, self._warning_msg)
+                nr_warnings += 1
+                match = self._match(lines, match + len(self._pattern.pattern))
+        return nr_warnings, lines
 
 
 class ReplaceComments(Rule):
