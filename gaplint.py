@@ -62,7 +62,12 @@ _GAP_KEYWORDS = {
     "Assert",
 }
 
-_DEFAULT_CONFIG = {"max_warnings": 1000, "columns": 80, "indentation": 2}
+_DEFAULT_CONFIG = {
+    "max_warnings": 1000,
+    "columns": 80,
+    "indentation": 2,
+    "duplicate-function-min-length": 4,
+}
 
 _GLOB_CONFIG = {}
 _GLOB_SUPPRESSIONS = {}
@@ -596,6 +601,8 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._ws1_p = re.compile(r"[ \t\r\f\v]+")
         self._ws2_p = re.compile(r"\n[ \t\r\f\v]+")
         self._rec_p = re.compile(r"\brec\(")
+        self._func_bodies = []
+        self._func_position = []
 
     def reset(self) -> None:
         self._depth = -1
@@ -706,28 +713,43 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         decl_lvars -= use_lvars  # difference
         func_args -= use_lvars  # difference
 
+        linenum = lines.count("\n", 0, self._func_start_pos[-1])
+
         if len(ass_lvars) != 0:
             ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
             msg = f"Variables assigned but never used: {', '.join(ass_lvars)}"
-            linenum = lines.count("\n", 0, self._func_start_pos[-1])
             _warn(fname, linenum, msg)
             nr_warnings += 1
 
         if len(decl_lvars) != 0:
             decl_lvars = list(decl_lvars)
             msg = f"Unused local variables: {', '.join(decl_lvars)}"
-            linenum = lines.count("\n", 0, self._func_start_pos[-1])
             _warn(fname, linenum, msg)
             nr_warnings += 1
 
         func_args = [arg for arg in func_args if arg != "_"]
         if len(func_args) != 0:
             msg = f"Unused function arguments: {', '.join(func_args)}"
-            linenum = lines.count("\n", 0, self._func_start_pos[-1])
             if not _is_rule_suppressed(fname, linenum + 1, self):
                 _warn(fname, linenum, msg)
                 nr_warnings += 1
-
+        func_body = lines[self._func_start_pos[-1] : pos]
+        num_func_lines = func_body.count("\n")
+        limit = _GLOB_CONFIG["duplicate-function-min-length"]
+        if num_func_lines + 1 > limit:
+            func_body = re.sub(r"\n", "", func_body)
+            try:
+                index = self._func_bodies.index(func_body)
+                _warn(
+                    fname,
+                    linenum,
+                    f"Duplicate function with {num_func_lines + 1} > {limit}"
+                    + f" lines, previously defined at {self._func_position[index]}!",
+                )
+                nr_warnings += 1
+            except ValueError:
+                self._func_bodies.append(func_body)
+                self._func_position.append(f"{fname}:{linenum + 1}")
         self._func_start_pos.pop()
         return pos + len("end"), nr_warnings
 
