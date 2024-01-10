@@ -452,7 +452,7 @@ class WarnRegexFile(WarnRegexBase):
             if not _is_rule_suppressed(fname, line_num + 1, self):
                 _warn(fname, line_num, self._warning_msg)
                 nr_warnings += 1
-                match = self._match(lines, match + len(self._pattern.pattern))
+            match = self._match(lines, match + len(self._pattern.pattern))
         return nr_warnings, lines
 
 
@@ -1324,7 +1324,7 @@ def __init_rules(args: argparse.Namespace) -> None:
         WarnRegexFile(
             "1-line-function",
             "W034",
-            r"\bfunction\b.*?\n.*?\breturn\b.*?\n\bend\b",
+            r"\bfunction\b.*?\n.*?\breturn\b.*?\n.*?\bend\b",
             "One line function could be a lambda",
         ),
     ]
@@ -1668,7 +1668,7 @@ def _is_rule_suppressed(
 def _verbose_msg_per_file(args: argparse.Namespace, fname: str, i: int) -> None:
     num_files = len(args.files)
     num_digits = len(str(num_files))
-    prefix_len = max(len(x) for x in args.files)
+    prefix_len = max(len(x) for x in args.files) + 2
     index_str = str(i + 1).rjust(num_digits)
 
     _info_verbose(
@@ -1711,9 +1711,8 @@ def main(**kwargs) -> None:
 
     total_nr_warnings = 0
     max_warnings = _GLOB_CONFIG["max_warnings"]
-
+    global_rules = _FILE_RULES[2]
     if args.enable_experimental:
-        global_rules = _FILE_RULES[2]
         global_rules.add_rule(AnalyseDecls("analyse-decls", "W999"))
 
     def too_many_warnings(nr_warnings):
@@ -1756,6 +1755,7 @@ def main(**kwargs) -> None:
             write_to = sys.stdout
         else:
             write_to = sys.stderr
+        # TODO output time taken too
         write_to.write(
             f"Analysed {len(args.files)} files, found {total_nr_warnings} errors!\n"
         )
