@@ -1463,6 +1463,12 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
             "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
         ),
+        WarnRegexLine(
+            "dont-use-arg",
+            "W040",
+            r"\bfunction\b\s*\(\s*\barg\b\s*\)",
+            "Use arg... instead of arg",
+        ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
             "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
