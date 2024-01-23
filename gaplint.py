@@ -129,22 +129,20 @@ def _is_in_string(lines: str, pos: int) -> bool:
 ###############################################################################
 
 
-# TODO report rule code and/or name here too
-def _warn_or_error(fname: str, linenum: int, msg: str, threshold: int) -> None:
+def _warn_or_error(rule, fname: str, linenum: int, msg: str) -> None:
     if not _SILENT:
         assert isinstance(fname, str)
         assert isinstance(linenum, int)
         assert isinstance(msg, str)
-        assert isinstance(threshold, int)
-        sys.stderr.write(f"{fname}:{linenum + 1}: {msg} [{threshold}]\n")
+        sys.stderr.write(f"{fname}:{linenum + 1}: {msg} [{rule.code}]\n")
 
 
-def _warn(fname: str, linenum: int, msg: str) -> None:
-    _warn_or_error(fname, linenum, msg, 0)
+def _warn(rule, fname: str, linenum: int, msg: str) -> None:
+    _warn_or_error(rule, fname, linenum, msg)
 
 
-def _error(fname: str, linenum: int, msg: str) -> None:
-    _warn_or_error(fname, linenum, msg, 1)
+def _error(rule, fname: str, linenum: int, msg: str) -> None:
+    _warn_or_error(rule, fname, linenum, msg)
     sys.exit("Aborting!")
 
 
@@ -346,6 +344,7 @@ class AnalyseDecls(Rule):
                             f"{name} {decl_name.pattern} declared, but not used"
                         )
                         _warn(
+                            self,
                             gd_fname,
                             gd_file.count("\n", 0, decl_match.start()),
                             msg,
@@ -359,6 +358,7 @@ class AnalyseDecls(Rule):
                         nr_warnings += 1
                         msg = f"{name} {decl_name.pattern} declared, but not documented"
                         _warn(
+                            self,
                             gd_fname,
                             gd_file.count("\n", 0, decl_match.start()),
                             msg,
@@ -450,7 +450,7 @@ class WarnRegexFile(WarnRegexBase):
         while match is not None:
             line_num = lines.count("\n", 0, match)
             if not _is_rule_suppressed(fname, line_num + 1, self):
-                _warn(fname, line_num, self._warning_msg)
+                _warn(self, fname, line_num, self._warning_msg)
                 nr_warnings += 1
             match = self._match(lines, match + len(self._pattern.pattern))
         return nr_warnings, lines
@@ -530,6 +530,7 @@ class ReplaceBetweenDelimiters(Rule):
             end = self.__find_next(1, lines, start + 1)
             if end == -1:
                 _error(
+                    self,
                     fname,
                     lines.count("\n", 0, start),
                     f"Unmatched {self._delims[0].pattern}",
@@ -669,6 +670,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 var = var[0].strip()
             elif len(var) != 2 or var[0] not in ("readonly", "readwrite"):
                 _error(
+                    self,
                     fname,
                     lines.count("\n", 0, pos),
                     f'Invalid syntax: "{lines[start:end]}"',
@@ -677,12 +679,14 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 var = var[1].strip()
             if var in args:
                 _error(
+                    self,
                     fname,
                     lines.count("\n", 0, pos),
                     f"Duplicate function argument: {var}",
                 )
             elif var in _GAP_KEYWORDS:
                 _error(
+                    self,
                     fname,
                     lines.count("\n", 0, pos),
                     f"Function argument is keyword: {var}",
@@ -697,7 +701,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self, fname: str, lines: str, pos: int, nr_warnings: int
     ) -> Tuple[int, int]:
         if len(self._declared_lvars) == 0:
-            _error(fname, lines.count("\n", 0, pos), "'end' outside function")
+            _error(
+                self, fname, lines.count("\n", 0, pos), "'end' outside function"
+            )
 
         self._depth -= 1
 
@@ -720,20 +726,20 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         if len(ass_lvars) != 0:
             ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
             msg = f"Variables assigned but never used: {', '.join(ass_lvars)}"
-            _warn(fname, linenum, msg)
+            _warn(self, fname, linenum, msg)
             nr_warnings += 1
 
         if len(decl_lvars) != 0:
             decl_lvars = list(decl_lvars)
             msg = f"Unused local variables: {', '.join(decl_lvars)}"
-            _warn(fname, linenum, msg)
+            _warn(self, fname, linenum, msg)
             nr_warnings += 1
 
         func_args = [arg for arg in func_args if arg != "_"]
         if len(func_args) != 0:
             msg = f"Unused function arguments: {', '.join(func_args)}"
             if not _is_rule_suppressed(fname, linenum + 1, self):
-                _warn(fname, linenum, msg)
+                _warn(self, fname, linenum, msg)
                 nr_warnings += 1
         func_body = lines[self._func_start_pos[-1] : pos]
         num_func_lines = func_body.count("\n")
@@ -743,6 +749,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             try:
                 index = self._func_bodies.index(func_body)
                 _warn(
+                    self,
                     fname,
                     linenum,
                     f"Duplicate function with {num_func_lines + 1} > {limit}"
@@ -755,22 +762,38 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         if num_func_lines == 2:
             line = func_body.split("\n")[-2]
             if re.search(r"\breturn\b\s+\btrue\b", line):
-                _warn(fname, linenum, "Replace one line function by ReturnTrue")
+                _warn(
+                    self,
+                    fname,
+                    linenum,
+                    "Replace one line function by ReturnTrue",
+                )
                 nr_warnings += 1
             if re.search(r"\breturn\b\s+\bfalse\b", line):
                 _warn(
-                    fname, linenum, "Replace one line function by ReturnFalse"
+                    self,
+                    fname,
+                    linenum,
+                    "Replace one line function by ReturnFalse",
                 )
                 nr_warnings += 1
             if re.search(r"\breturn\b\s+\bfail\b", line):
-                _warn(fname, linenum, "Replace one line function by ReturnFail")
+                _warn(
+                    self,
+                    fname,
+                    linenum,
+                    "Replace one line function by ReturnFail",
+                )
                 nr_warnings += 1
 
             if len(func_args) != 0 and re.search(
                 rf"\breturn\b\s+\b{func_args_all[0]}\b", line
             ):
                 _warn(
-                    fname, linenum, "Replace {x, rest...} -> x by ReturnFirst"
+                    self,
+                    fname,
+                    linenum,
+                    "Replace {x, rest...} -> x by ReturnFirst",
                 )
                 nr_warnings += 1
 
@@ -789,18 +812,21 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             var = var.strip()
             if var in lvars:
                 _error(
+                    self,
                     fname,
                     lines.count("\n", 0, pos),
                     "Name used for two local variables: " + var,
                 )
             elif var in args:
                 _error(
+                    self,
                     fname,
                     lines.count("\n", 0, pos),
                     f"Name used for function argument and local variable: {var}",
                 )
             elif var in _GAP_KEYWORDS:
                 _error(
+                    self,
                     fname,
                     lines.count("\n", 0, pos),
                     f"Local variable is keyword: {var}",
@@ -817,7 +843,12 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         if end is None and func is None:
             return len(lines), nr_warnings
         if end is None and func is not None:
-            _error(fname, lines.count("\n", 0, pos), "'function' without 'end'")
+            _error(
+                self,
+                fname,
+                lines.count("\n", 0, pos),
+                "'function' without 'end'",
+            )
 
         if func is not None and end is not None and func.start() < end.start():
             end = func.start()
@@ -888,6 +919,7 @@ class LineTooLong(Rule):
             return nr_warnings, lines
         if len(lines[linenum]) - 1 > self._cols:
             _warn(
+                self,
                 fname,
                 linenum,
                 f"Too long line ({len(lines[linenum]) - 1} / {self._cols})",
@@ -911,7 +943,7 @@ class WarnRegexLine(WarnRegexBase):
         assert isinstance(nr_warnings, int)
         if not self.skip(fname):
             if self._match(lines[linenum]) is not None:
-                _warn(fname, linenum, self._warning_msg)
+                _warn(self, fname, linenum, self._warning_msg)
                 return nr_warnings + 1, lines
         return nr_warnings, lines
 
@@ -976,7 +1008,7 @@ class UnalignedPatterns(Rule):
         if col is not None and self._last_line_col is not None:
             group = self._group
             if col.start(group) != self._last_line_col.start(group):
-                _warn(fname, linenum, self._msg)
+                _warn(self, fname, linenum, self._msg)
                 return nr_warnings + 1, lines
         self._last_line_col = col
         return nr_warnings, lines
@@ -1033,7 +1065,7 @@ class Indentation(Rule):
 
         indent = self._get_indent_level(lines[linenum])
         if indent < self._expected:
-            _warn(fname, linenum, self._msg % (indent, self._expected))
+            _warn(self, fname, linenum, self._msg % (indent, self._expected))
             nr_warnings += 1
 
         for pair in self._after:
@@ -1742,7 +1774,7 @@ def _verbose_msg_per_file(args: argparse.Namespace, fname: str, i: int) -> None:
     )
 
 
-# pylint: disable=too-many-branches
+# pylint: disable=too-many-branches, too-many-locals
 def main(**kwargs) -> None:
     """
     This function applies all rules in this module to the files specified by
