@@ -1475,6 +1475,12 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"\bfunction\b\s*\([^)]*\)\s*;",
             'Remove unnecessary semicolon in "function(.*);"',
         ),
+        WarnRegexLine(
+            "prefer-last",
+            "W042",
+            r"\b(\w+)\b\s*\[\s*Length\(\1\)\s*\]",
+            "Use Last(x) instead of x[Length(x)]",
+        ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
             "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
