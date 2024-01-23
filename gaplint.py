@@ -1327,6 +1327,12 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"\bfunction\b\s*\((?!(arg|.+\.\.\.)).*\).*?\n.*?\breturn\b.*?\n.*?\bend\b",
             "One line function could be a lambda",
         ),
+        WarnRegexFile(
+            "if-then-return-true-else-return-false",
+            "W046",
+            r"\bif\b.*?\bthen\b\n?\s*return\s*true;\n?\s*else\s*\n?\s*return\s*false;\n?\s*fi;",
+            'Replace "if X then return true; else return false;" by "X"',
+        ),
     ]
     if args.enable_experimental:
         _FILE_RULES += _EXPERIMENTAL_FILE_RULES
