@@ -1469,6 +1469,12 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"\bfunction\b\s*\(\s*\barg\b\s*\)",
             "Use arg... instead of arg",
         ),
+        WarnRegexLine(
+            "no-semicolon-after-function",
+            "W041",
+            r"\bfunction\b\s*\([^)]*\)\s*;",
+            'Remove unnecessary semicolon in "function(.*);"',
+        ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
             "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
