@@ -9,6 +9,7 @@ import argparse
 import os
 import re
 import sys
+import time
 from typing import Callable, Tuple, List, Dict, Union, Optional
 
 from os import listdir
@@ -1791,6 +1792,7 @@ def main(**kwargs) -> None:
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
     """
+    start_time = time.process_time()
     args = _parse_args(kwargs)
 
     if __debug__:
@@ -1853,9 +1855,9 @@ def main(**kwargs) -> None:
             write_to = sys.stdout
         else:
             write_to = sys.stderr
-        # TODO output time taken too
+        t = time.process_time() - start_time
         write_to.write(
-            f"Analysed {len(args.files)} files, found {total_nr_warnings} errors!\n"
+            f"Analysed {len(args.files)} files in {t:.2f}s, found {total_nr_warnings} errors!\n"
         )
     sys.exit(total_nr_warnings > 0)
 
