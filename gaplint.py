@@ -1493,6 +1493,12 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"{\s*(\w+)\s*,(\s*\w+\s*,?)+}\s*->\s*\b\1\b(\)|;)",
             "Replace {x, rest...} -> x by ReturnFirst",
         ),
+        WarnRegexLine(
+            "use-is-empty",
+            "W045",
+            r"(\b\S+\s*=\s*\[\s*\]|Length\(\s*\S+\s*\)\s*=\s*0)",
+            'Use IsEmpty(x) not "x = []" or "Length(x) = 0"',
+        ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
             "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
