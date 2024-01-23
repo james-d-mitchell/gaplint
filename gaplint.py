@@ -1324,7 +1324,7 @@ def __init_rules(args: argparse.Namespace) -> None:
         WarnRegexFile(
             "1-line-function",
             "W034",
-            r"\bfunction\b.*?\n.*?\breturn\b.*?\n.*?\bend\b",
+            r"\bfunction\b\s*\((?!(arg|.+\.\.\.)).*\).*?\n.*?\breturn\b.*?\n.*?\bend\b",
             "One line function could be a lambda",
         ),
     ]
