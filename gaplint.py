@@ -532,7 +532,7 @@ class ReplaceBetweenDelimiters(Rule):
                 _error(
                     fname,
                     lines.count("\n", 0, start),
-                    "Unmatched {self._delims[0].pattern}",
+                    f"Unmatched {self._delims[0].pattern}",
                 )
             end += len(self._delims[1].pattern)
             repl = re.sub("[^\n ]", "@", lines[start:end])
