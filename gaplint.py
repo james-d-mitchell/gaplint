@@ -696,6 +696,82 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 args.append(var)
         return end + 1, nr_warnings
 
+    def _check_assigned_but_never_used_lvars(
+        self, ass_lvars, fname, linenum, nr_warnings
+    ):
+        if len(ass_lvars) != 0:
+            ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
+            msg = f"Variables assigned but never used: {', '.join(ass_lvars)}"
+            _warn(self, fname, linenum, msg)
+            nr_warnings += 1
+        return nr_warnings
+
+    def _check_unused_lvars(self, decl_lvars, fname, linenum, nr_warnings):
+        if len(decl_lvars) != 0:
+            decl_lvars = list(decl_lvars)
+            msg = f"Unused local variables: {', '.join(decl_lvars)}"
+            _warn(self, fname, linenum, msg)
+            nr_warnings += 1
+        return nr_warnings
+
+    def _check_unused_func_args(self, func_args, fname, linenum, nr_warnings):
+        func_args = [arg for arg in func_args if arg != "_"]
+        if len(func_args) != 0:
+            msg = f"Unused function arguments: {', '.join(func_args)}"
+            if not _is_rule_suppressed(fname, linenum + 1, self):
+                _warn(self, fname, linenum, msg)
+                nr_warnings += 1
+        return nr_warnings
+
+    def _check_dupl_funcs(self, func_body, fname, linenum, nr_warnings):
+        num_func_lines = func_body.count("\n")
+        limit = _GLOB_CONFIG["duplicate-function-min-length"]
+        if num_func_lines + 1 > limit:
+            func_body = re.sub(r"\n", "", func_body)
+            try:
+                index = self._func_bodies.index(func_body)
+                _warn(
+                    self,
+                    fname,
+                    linenum,
+                    f"Duplicate function with {num_func_lines + 1} > {limit}"
+                    + f" lines, previously defined at {self._func_position[index]}!",
+                )
+                nr_warnings += 1
+            except ValueError:
+                self._func_bodies.append(func_body)
+                self._func_position.append(f"{fname}:{linenum + 1}")
+        return nr_warnings
+
+    def _check_for_return_fail_etc(  # pylint: disable=too-many-arguments
+        self, func_body, func_args_all, fname, linenum, nr_warnings
+    ):
+        num_func_lines = func_body.count("\n")
+        if num_func_lines != 2:
+            return nr_warnings
+
+        line = func_body.split("\n")[-2]
+        for bval in ("true", "false", "fail"):
+            if re.search(rf"\breturn\b\s+\b{bval}\b", line):
+                _warn(
+                    self,
+                    fname,
+                    linenum,
+                    f"Replace one line function by Return{bval.capitalize()}",
+                )
+                nr_warnings += 1
+        if len(func_args_all) != 0 and re.search(
+            rf"\breturn\b\s+\b{func_args_all[0]}\b", line
+        ):
+            _warn(
+                self,
+                fname,
+                linenum,
+                "Replace {arg1, arg2...} -> arg1 by ReturnFirst",
+            )
+            nr_warnings += 1
+        return nr_warnings
+
     # TODO refactor this function to be shorter and to allow disabling each
     # check independently
     def _end_function(
@@ -723,80 +799,25 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         func_args = set(func_args_all) - use_lvars  # difference
 
         linenum = lines.count("\n", 0, self._func_start_pos[-1])
+        nr_warnings = self._check_assigned_but_never_used_lvars(
+            ass_lvars, fname, linenum, nr_warnings
+        )
+        nr_warnings = self._check_unused_lvars(
+            ass_lvars, fname, linenum, nr_warnings
+        )
+        nr_warnings = self._check_unused_func_args(
+            func_args, fname, linenum, nr_warnings
+        )
 
-        if len(ass_lvars) != 0:
-            ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
-            msg = f"Variables assigned but never used: {', '.join(ass_lvars)}"
-            _warn(self, fname, linenum, msg)
-            nr_warnings += 1
-
-        if len(decl_lvars) != 0:
-            decl_lvars = list(decl_lvars)
-            msg = f"Unused local variables: {', '.join(decl_lvars)}"
-            _warn(self, fname, linenum, msg)
-            nr_warnings += 1
-
-        func_args = [arg for arg in func_args if arg != "_"]
-        if len(func_args) != 0:
-            msg = f"Unused function arguments: {', '.join(func_args)}"
-            if not _is_rule_suppressed(fname, linenum + 1, self):
-                _warn(self, fname, linenum, msg)
-                nr_warnings += 1
         func_body = lines[self._func_start_pos[-1] : pos]
-        num_func_lines = func_body.count("\n")
-        limit = _GLOB_CONFIG["duplicate-function-min-length"]
-        if num_func_lines + 1 > limit:
-            func_body = re.sub(r"\n", "", func_body)
-            try:
-                index = self._func_bodies.index(func_body)
-                _warn(
-                    self,
-                    fname,
-                    linenum,
-                    f"Duplicate function with {num_func_lines + 1} > {limit}"
-                    + f" lines, previously defined at {self._func_position[index]}!",
-                )
-                nr_warnings += 1
-            except ValueError:
-                self._func_bodies.append(func_body)
-                self._func_position.append(f"{fname}:{linenum + 1}")
-        if num_func_lines == 2:
-            line = func_body.split("\n")[-2]
-            if re.search(r"\breturn\b\s+\btrue\b", line):
-                _warn(
-                    self,
-                    fname,
-                    linenum,
-                    "Replace one line function by ReturnTrue",
-                )
-                nr_warnings += 1
-            if re.search(r"\breturn\b\s+\bfalse\b", line):
-                _warn(
-                    self,
-                    fname,
-                    linenum,
-                    "Replace one line function by ReturnFalse",
-                )
-                nr_warnings += 1
-            if re.search(r"\breturn\b\s+\bfail\b", line):
-                _warn(
-                    self,
-                    fname,
-                    linenum,
-                    "Replace one line function by ReturnFail",
-                )
-                nr_warnings += 1
 
-            if len(func_args) != 0 and re.search(
-                rf"\breturn\b\s+\b{func_args_all[0]}\b", line
-            ):
-                _warn(
-                    self,
-                    fname,
-                    linenum,
-                    "Replace {x, rest...} -> x by ReturnFirst",
-                )
-                nr_warnings += 1
+        nr_warnings = self._check_dupl_funcs(
+            func_body, fname, linenum, nr_warnings
+        )
+
+        nr_warnings = self._check_for_return_fail_etc(
+            func_body, func_args_all, fname, linenum, nr_warnings
+        )
 
         self._func_start_pos.pop()
         return pos + len("end"), nr_warnings
