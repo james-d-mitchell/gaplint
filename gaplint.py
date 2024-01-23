@@ -1487,6 +1487,12 @@ def __init_rules(args: argparse.Namespace) -> None:
             r"\bif\s+not\s+\S+\s*=",
             'Use "x <> y" instead of "not x = y"',
         ),
+        WarnRegexLine(
+            "use-return-first",
+            "W044",
+            r"{\s*(\w+)\s*,(\s*\w+\s*,?)+}\s*->\s*\b\1\b(\)|;)",
+            "Replace {x, rest...} -> x by ReturnFirst",
+        ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
             "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
