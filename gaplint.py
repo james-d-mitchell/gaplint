@@ -652,7 +652,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         assert self._depth == len(self._used_lvars)
         assert self._depth == len(self._func_start_pos)
 
-        self._func_args.append(set())
+        self._func_args.append([])
         self._declared_lvars.append(set())
         self._assigned_lvars.append(set())
         self._used_lvars.append(set())
@@ -688,9 +688,11 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                     f"Function argument is keyword: {var}",
                 )
             else:
-                args.add(var)
+                args.append(var)
         return end + 1, nr_warnings
 
+    # TODO refactor this function to be shorter and to allow disabling each
+    # check independently
     def _end_function(
         self, fname: str, lines: str, pos: int, nr_warnings: int
     ) -> Tuple[int, int]:
@@ -702,7 +704,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         ass_lvars = self._assigned_lvars.pop()
         decl_lvars = self._declared_lvars.pop()
         use_lvars = self._used_lvars.pop()
-        func_args = self._func_args.pop()
+        func_args_all = self._func_args.pop()
 
         if len(self._used_lvars) > 0:
             self._used_lvars[-1] |= use_lvars  # union
@@ -711,7 +713,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         ass_lvars &= decl_lvars  # intersection
         decl_lvars -= ass_lvars  # difference
         decl_lvars -= use_lvars  # difference
-        func_args -= use_lvars  # difference
+        func_args = set(func_args_all) - use_lvars  # difference
 
         linenum = lines.count("\n", 0, self._func_start_pos[-1])
 
@@ -750,6 +752,28 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             except ValueError:
                 self._func_bodies.append(func_body)
                 self._func_position.append(f"{fname}:{linenum + 1}")
+        if num_func_lines == 2:
+            line = func_body.split("\n")[-2]
+            if re.search(r"\breturn\b\s+\btrue\b", line):
+                _warn(fname, linenum, "Replace one line function by ReturnTrue")
+                nr_warnings += 1
+            if re.search(r"\breturn\b\s+\bfalse\b", line):
+                _warn(
+                    fname, linenum, "Replace one line function by ReturnFalse"
+                )
+                nr_warnings += 1
+            if re.search(r"\breturn\b\s+\bfail\b", line):
+                _warn(fname, linenum, "Replace one line function by ReturnFail")
+                nr_warnings += 1
+
+            if len(func_args) != 0 and re.search(
+                rf"\breturn\b\s+\b{func_args_all[0]}\b", line
+            ):
+                _warn(
+                    fname, linenum, "Replace {x, rest...} -> x by ReturnFirst"
+                )
+                nr_warnings += 1
+
         self._func_start_pos.pop()
         return pos + len("end"), nr_warnings
 
