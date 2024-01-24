@@ -6,6 +6,7 @@ file according to some conventions.
 # pylint: disable=fixme, too-many-lines
 
 import argparse
+import itertools
 import os
 import re
 import sys
@@ -588,6 +589,15 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     This rule checks if there are unused local variables in a function.
     """
 
+    SubRules = {
+        "W047": Rule("unused-func-args", "W047"),
+        "W048": Rule("duplicate-function", "W048"),
+        "W049": Rule("use-return-true", "W049"),
+        "W050": Rule("use-return-false", "W050"),
+        "W051": Rule("use-return-fail", "W051"),
+        "W052": Rule("use-return-first", "W052"),
+    }
+
     def __init__(
         self, name: Optional[str] = None, code: Optional[str] = None
     ) -> None:
@@ -717,8 +727,12 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     def _check_unused_func_args(self, func_args, fname, linenum, nr_warnings):
         func_args = [arg for arg in func_args if arg != "_"]
         if len(func_args) != 0:
-            msg = f"Unused function arguments: {', '.join(func_args)}"
-            if not _is_rule_suppressed(fname, linenum + 1, self):
+            if not _is_rule_suppressed(
+                fname, linenum + 1, self
+            ) and not _is_rule_suppressed(
+                fname, linenum + 1, AnalyseLVars.SubRules["W047"]
+            ):
+                msg = f"Unused function arguments: {', '.join(func_args)}"
                 _warn(self, fname, linenum, msg)
                 nr_warnings += 1
         return nr_warnings
@@ -727,20 +741,26 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         num_func_lines = func_body.count("\n")
         limit = _GLOB_CONFIG["duplicate-function-min-length"]
         if num_func_lines + 1 > limit:
-            func_body = re.sub(r"\n", "", func_body)
-            try:
-                index = self._func_bodies.index(func_body)
-                _warn(
-                    self,
-                    fname,
-                    linenum,
-                    f"Duplicate function with {num_func_lines + 1} > {limit}"
-                    + f" lines, previously defined at {self._func_position[index]}!",
-                )
-                nr_warnings += 1
-            except ValueError:
-                self._func_bodies.append(func_body)
-                self._func_position.append(f"{fname}:{linenum + 1}")
+            if not _is_rule_suppressed(
+                fname, linenum + 1, self
+            ) and not _is_rule_suppressed(
+                fname, linenum + 1, AnalyseLVars.SubRules["W048"]
+            ):
+                func_body = re.sub(r"\n", "", func_body)
+                try:
+                    index = self._func_bodies.index(func_body)
+                    _warn(
+                        AnalyseLVars.SubRules["W048"],
+                        fname,
+                        linenum,
+                        f"Duplicate function with {num_func_lines + 1} > {limit}"
+                        + ' lines (from "function" to "end" inclusive), previously '
+                        + f"defined at {self._func_position[index]}!",
+                    )
+                    nr_warnings += 1
+                except ValueError:
+                    self._func_bodies.append(func_body)
+                    self._func_position.append(f"{fname}:{linenum + 1}")
         return nr_warnings
 
     def _check_for_return_fail_etc(  # pylint: disable=too-many-arguments
@@ -751,8 +771,18 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             return nr_warnings
 
         line = func_body.split("\n")[-2]
-        for bval in ("true", "false", "fail"):
-            if re.search(rf"\breturn\b\s+\b{bval}\b", line):
+        for bval, code in (
+            ("true", "W049"),
+            ("false", "W050"),
+            ("fail", "W051"),
+        ):
+            if (
+                not _is_rule_suppressed(fname, linenum + 1, self)
+                and not _is_rule_suppressed(
+                    fname, linenum + 1, AnalyseLVars.SubRules[code]
+                )
+                and re.search(rf"\breturn\b\s+\b{bval}\b", line)
+            ):
                 _warn(
                     self,
                     fname,
@@ -760,20 +790,23 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                     f"Replace one line function by Return{bval.capitalize()}",
                 )
                 nr_warnings += 1
-        if len(func_args_all) != 0 and re.search(
-            rf"\breturn\b\s+\b{func_args_all[0]}\b", line
+        if (
+            len(func_args_all) != 0
+            and not _is_rule_suppressed(fname, linenum + 1, self)
+            and not _is_rule_suppressed(
+                fname, linenum + 1, AnalyseLVars.SubRules["W051"]
+            )
+            and re.search(rf"\breturn\b\s+\b{func_args_all[0]}\s*;", line)
         ):
             _warn(
                 self,
                 fname,
                 linenum,
-                "Replace {arg1, arg2...} -> arg1 by ReturnFirst",
+                "Replace function(x, y) return x; end; by ReturnFirst",
             )
             nr_warnings += 1
         return nr_warnings
 
-    # TODO refactor this function to be shorter and to allow disabling each
-    # check independently
     def _end_function(
         self, fname: str, lines: str, pos: int, nr_warnings: int
     ) -> Tuple[int, int]:
@@ -799,6 +832,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         func_args = set(func_args_all) - use_lvars  # difference
 
         linenum = lines.count("\n", 0, self._func_start_pos[-1])
+
         nr_warnings = self._check_assigned_but_never_used_lvars(
             ass_lvars, fname, linenum, nr_warnings
         )
@@ -1568,7 +1602,7 @@ def __init_rules(args: argparse.Namespace) -> None:
         WarnRegexLine(
             "use-not-eq",
             "W043",
-            r"\bif\s+not\s+\S+\s*=",
+            r"\bif\s+not\s+\w+\s*=",
             'Use "x <> y" instead of "not x = y"',
         ),
         WarnRegexLine(
@@ -1580,7 +1614,7 @@ def __init_rules(args: argparse.Namespace) -> None:
         WarnRegexLine(
             "use-is-empty",
             "W045",
-            r"(\b\S+\s*=\s*\[\s*\]|Length\(\s*\S+\s*\)\s*=\s*0)",
+            r"\bif\b.*(\w+\s*=\s*\[\s*\]|Length\(\s*\S+\s*\)\s*=\s*0)",
             'Use IsEmpty(x) not "x = []" or "Length(x) = 0"',
         ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
@@ -1644,7 +1678,9 @@ def __is_valid_rule_name_or_code(
 
     if name_or_code == "all":
         return True
-    for rule in _LINE_RULES + _FILE_RULES:
+    for rule in itertools.chain(
+        iter(_LINE_RULES), iter(_FILE_RULES), AnalyseLVars.SubRules.values()
+    ):
         if isinstance(rule, GlobalRules):
             continue
 
