@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import time
+from copy import deepcopy
 from typing import Callable, Tuple, List, Dict, Union, Optional, Set, Any
 
 from os import listdir
@@ -192,11 +193,13 @@ class Rule:  # pylint: disable=too-few-public-methods
         return set(x for x in Rule.all_codes if x and not x.startswith("M"))
 
     @staticmethod
-    def to_code(name: str) -> str:
+    def to_code(name_or_code: str) -> str:
         """
-        Get the code of a rule by its name.
+        Get the code of a rule by its name_or_code.
         """
-        return Rule.all_names[name]
+        if name_or_code in Rule.all_names:
+            return Rule.all_names[name_or_code]
+        return name_or_code
 
     @staticmethod
     # TODO set instead of list?
@@ -1337,6 +1340,79 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
             args[key] = val
     return args
 
+
+def __merge_args(
+    cmd_line_args: Dict[str, Any],
+    kwargs: Dict[str, Any],
+    config_yml_fname: str,
+    yml_dic: Dict[str, Any],
+):
+    args = deepcopy(cmd_line_args)
+    for key, val in args.items():
+        if key == "disable":
+            args[key] |= set(kwargs[key])  # union
+            args[key] |= set(yml_dic[key])
+        elif key == "files":
+            args[key].extend(kwargs[key])
+            args[key].extend(yml_dic[key])
+        elif key == "enable":
+            continue
+        elif val != kwargs[key]:
+            _info_action(
+                f"CONFLICTING configuration values found '{val}' in "
+                + f"command line arguments and '{kwargs[key]}' in keyword"
+                + " arguments"
+            )
+            # sys.exit("Aborting!")
+        elif val != yml_dic[key]:
+            _info_action(
+                f"CONFLICTING configuration values found '{val}' in "
+                + f"command line arguments and '{yml_dic[key]}' in "
+                + f"{config_yml_fname}"
+            )
+            # TODO this doesn't work because we can't tell the difference
+            # between explicitly specified and default values
+            # sys.exit("Aborting!")
+    key = "enable"
+    if "all" in (cmd_line_args[key], kwargs[key], yml_dic[key]):
+        args[key] = "all"
+    else:
+        args[key] &= set(kwargs[key])  # intersection
+        args[key] &= set(yml_dic[key])
+    return args
+
+
+def __normalize_disabled_rules(
+    args: Dict[str, Any], where: str
+) -> Dict[str, Any]:
+    # Rules can only be enabled globally, at the command line, as a keyword
+    # argument when calling gaplint as a function in python, or in a config
+    # file.
+    def normalize_codes(codes: Set[str]) -> Set[str]:
+        lcodes = list(codes)  # better way?
+        for i, code in enumerate(lcodes):
+            __can_disable_rule_name_or_code(code, where)
+            lcodes[i] = Rule.to_code(code)
+        return set(codes)
+
+    all_codes = Rule.all_suppressible_codes()
+
+    disabled = normalize_codes(args["disable"])
+
+    if args["enable"] == "all":
+        enabled = all_codes
+    else:
+        enabled = normalize_codes(args["enable"])
+
+    disabled |= all_codes - enabled  # union
+
+    # Special case for AnalyseLVars.SubRules since they are covered by two
+    # codes W000 and the subrule code.
+    if any(x.code in enabled for x in AnalyseLVars.SubRules.values()):
+        if "W000" in args["disable"]:
+            args["disable"].remove("W000")
+    return args
+
     # global _SILENT, _VERSBOSE, _GLOB_CONFIG, _GLOB_SUPPRESSIONS, _FILE_SUPPRESSIONS, _LINE_SUPPRESSIONS
     # if "silent" in kwargs:
     #     _SILENT = kwargs["silent"]
@@ -1532,7 +1608,7 @@ def __init_rules(args: Dict[str, Any]) -> None:
             'Replace "if X then return true; else return false;" by "X"',
         ),
     ]
-    if args.enable_experimental:
+    if args["enable-experimental"]:
         _FILE_RULES += _EXPERIMENTAL_FILE_RULES
     _LINE_RULES = [
         LineTooLong("line-too-long", "W002"),
@@ -1770,11 +1846,11 @@ def __can_disable_rule_name_or_code(name_or_code: str, where: str) -> bool:
         if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
                 _info_action(
-                    f"IGNORING cannot disable rule {name_or_code} {where}"
+                    f'IGNORING cannot disable rule "{name_or_code}" {where}'
                 )
                 return False
             return True
-    _info_action(f"IGNORING invalid rule name or code {name_or_code} {where}")
+    _info_action(f'IGNORING invalid rule name or code "{name_or_code}" {where}')
     return False
 
 
@@ -1937,6 +2013,7 @@ def main(**kwargs) -> None:
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
     """
+    global _SILENT, _VERBOSE, _GLOB_CONFIG
     start_time = time.process_time()
     if __debug__:
         _info_verbose("Debug on . . .")
@@ -1949,18 +2026,30 @@ def main(**kwargs) -> None:
 
     # check the arg types and values, don't need to check cmd_line_args because
     # its not possible for them to be wrong
-    __normalize_args(cmd_line_args, "(command line argument)")
-    __normalize_args(kwargs, "(keyword argument)")
-    __normalize_args(yml_dic, f"({config_yml_fname})")
+    cmd_line_args = __normalize_args(cmd_line_args, "(command line argument)")
+    kwargs = __normalize_args(kwargs, "(keyword argument)")
+    yml_dic = __normalize_args(yml_dic, f"({config_yml_fname})")
+    print(cmd_line_args)
+    args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
+    print(cmd_line_args)
 
-    args = {**cmd_line_args, **kwargs, **yml_dic}
+    # TODO init_globals
+    _SILENT = args["silent"]
+    _VERBOSE = args["verbose"]
+    _GLOB_CONFIG = args
 
+    print(args)
     if len(args["files"]) == 0:
         return
 
     __init_rules(args)
-    # need Rules before we can do this
-    __init_enabled_rules(args)
+    # the next line has to come after __init_rules because we need to know what
+    # all of the rules are before we can check if we're given any bad ones
+    __normalize_disabled_rules(cmd_line_args, "(command line argument)")
+    __normalize_disabled_rules(kwargs, "(keyword argument)")
+    __normalize_disabled_rules(yml_dic, f"({config_yml_fname})")
+
+    # TODO initialise suppressions dicts
     __init_config_and_suppressions_yml()
     __init_config_and_suppressions_command_line(args)
     __init_file_and_line_suppressions(args)
