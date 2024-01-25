@@ -11,7 +11,7 @@ import os
 import re
 import sys
 import time
-from typing import Callable, Tuple, List, Dict, Union, Optional
+from typing import Callable, Tuple, List, Dict, Union, Optional, Set, Any
 
 from os import listdir
 from os.path import isdir, exists, isfile, abspath, join
@@ -64,15 +64,22 @@ _GAP_KEYWORDS = {
     "Assert",
 }
 
+# TODO add more?
 _DEFAULT_CONFIG = {
-    "max_warnings": 1000,
+    "max-warnings": 1000,
     "columns": 80,
+    "disable": set(),
+    "dupl-func-min-len": 4,
+    "enable-experimental": False,
+    "enable": set(),
     "indentation": 2,
-    "duplicate-function-min-length": 4,
+    "silent": False,
+    "verbose": False,
+    "files": [],
 }
 
 _GLOB_CONFIG = {}
-_GLOB_SUPPRESSIONS = {}
+_GLOB_SUPPRESSIONS = set()
 _FILE_SUPPRESSIONS = {}
 _LINE_SUPPRESSIONS = {}
 
@@ -174,19 +181,45 @@ class Rule:  # pylint: disable=too-few-public-methods
     the \"str\" is the lines of the file on which the rules are being applied.
     """
 
-    _all_codes = set()
-    _all_names = set()
+    all_codes = set()
+    all_names = {}
+
+    @staticmethod
+    def all_suppressible_codes() -> Set[str]:
+        """
+        Returns the set of all the suppressible rule codes.
+        """
+        return set(x for x in Rule.all_codes if x and not x.startswith("M"))
+
+    @staticmethod
+    def to_code(name: str) -> str:
+        """
+        Get the code of a rule by its name.
+        """
+        return Rule.all_names[name]
+
+    @staticmethod
+    # TODO set instead of list?
+    def to_codes(names: List[str]) -> List[str]:
+        """
+        Get the codes of a list of rules by their names.
+        """
+        return [Rule.all_names[name] for name in names]
+
+    # all_codes |= set(
+    #     x for x in Rule.all_names if x and not x.startswith("replace")
+    # )
 
     def __init__(self, name: Optional[str] = None, code: Optional[str] = None):
         assert isinstance(name, str) or (name is None and code is None)
         assert isinstance(code, str) or (name is None and code is None)
         if __debug__:
-            if code is not None and code in Rule._all_codes:
+            if code is not None and code in Rule.all_codes:
                 raise ValueError(f"Duplicate rule code {code}")
-            Rule._all_codes.add(code)
-            if name is not None and code in Rule._all_names:
+            Rule.all_codes.add(code)
+            if name is not None and name in Rule.all_names:
                 raise ValueError(f"Duplicate rule name {name}")
-            Rule._all_names.add(name)
+            Rule.all_names[name] = code
         self.name = name
         self.code = code
 
@@ -592,10 +625,10 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     SubRules = {
         "W047": Rule("unused-func-args", "W047"),
         "W048": Rule("duplicate-function", "W048"),
-        "W049": Rule("use-return-true", "W049"),
-        "W050": Rule("use-return-false", "W050"),
-        "W051": Rule("use-return-fail", "W051"),
-        "W052": Rule("use-return-first", "W052"),
+        "W049": Rule("use-return-true-alt", "W049"),
+        "W050": Rule("use-return-false-alt", "W050"),
+        "W051": Rule("use-return-fail-alt", "W051"),
+        "W052": Rule("use-return-first-alt", "W052"),
     }
 
     def __init__(
@@ -1143,61 +1176,96 @@ class Indentation(Rule):
 ###############################################################################
 
 
-def _parse_args(kwargs: Dict[str, bool]) -> argparse.Namespace:
-    # pylint: disable=too-many-branches, too-many-statements, global-statement
-    global _SILENT, _VERBOSE
+def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
+    """
+    Pass kwargs as an argument for the check for \"files\" o/w not needed.
+    """
     parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
     if "files" not in kwargs:
         parser.add_argument("files", nargs="+", help="the files to lint")
 
+    default = _DEFAULT_CONFIG["max-warnings"]
     parser.add_argument(
-        "--max_warnings",
+        "--max-warnings",
         nargs="?",
         type=int,
-        help="max number of warnings reported (default: 1000)",
+        default=default,
+        help=f"maximum number of warnings before giving up (default: {default})",
     )
-    parser.set_defaults(max_warnings=None)
 
+    default = _DEFAULT_CONFIG["columns"]
     parser.add_argument(
         "--columns",
         nargs="?",
         type=int,
-        help="max number of characters per line (default: 80)",
+        default=default,
+        help=f"maximum number of characters per line (default: {default})",
     )
-    parser.set_defaults(columns=None)
 
+    default = _DEFAULT_CONFIG["disable"]
     parser.add_argument(
         "--disable",
         nargs="?",
         type=str,
-        help="gaplint rules (name or code) to disable (default: None)",
+        default=default,
+        help="comma separated rule names and/or codes to disable (default: None)",
     )
-    parser.set_defaults(disable="")
-    # TODO an --enable option to enable only the specified rules
 
+    default = _DEFAULT_CONFIG["dupl-func-min-len"]
+    parser.add_argument(
+        "--dupl-func-min-len",
+        dest="dupl_func_min_len",
+        default=default,
+        type=int,
+        nargs="?",
+        help="report warnings for duplicate functions with more than "
+        + f"this many lines (default: {default})",
+    )
+
+    default = _DEFAULT_CONFIG["enable-experimental"]
+    parser.add_argument(
+        "--enable-experimental",
+        dest="enable_experimental",
+        default=default,
+        action="store_true",
+        help=f"enable some experimental rules (default: {default})",
+    )
+
+    parser.add_argument(
+        "--enable",
+        nargs="?",
+        type=str,
+        default="all",
+        help='comma separated rule names and/or codes to enable (default: "all")',
+    )
+
+    default = _DEFAULT_CONFIG["indentation"]
     parser.add_argument(
         "--indentation",
         nargs="?",
         type=int,
-        help="indentation of nested statements (default: 2)",
+        default=default,
+        help=f"indentation of nested statements (default: {default})",
     )
-    parser.set_defaults(indentation=None)
 
+    default = _DEFAULT_CONFIG["silent"]
     parser.add_argument(
         "--silent",
         dest="silent",
         action="store_true",
-        help="silence all warnings (default: False)",
+        default=default,
+        help=f"silence all warnings (default: {default})",
     )
-    parser.set_defaults(silent=False)
 
+    default = _DEFAULT_CONFIG["verbose"]
     parser.add_argument(
         "--verbose",
         dest="verbose",
         action="store_true",
-        help=" (default: False)",
+        default=default,
+        help=f"enable verbose mode (default: {default})",
     )
-    parser.set_defaults(verbose=False)
+
     vers_num = version("gaplint")
     parser.add_argument(
         "--version",
@@ -1205,58 +1273,99 @@ def _parse_args(kwargs: Dict[str, bool]) -> argparse.Namespace:
         version=f"%(prog)s version {vers_num}",
     )
 
-    parser.add_argument(
-        "--enable-experimental",
-        dest="enable_experimental",
-        action="store_true",
-        help=" (default: False)",
-    )
-    parser.set_defaults(enable_experimental=False)
+    args = parser.parse_args()
 
-    args, unknown = parser.parse_known_args()
+    result = {}
+    for arg in dir(args):
+        if not arg.startswith("__") and not callable(getattr(args, arg)):
+            key = arg.replace("_", "-")
+            val = getattr(args, arg)
+            result[key] = val
 
+    if isinstance(result["disable"], str):
+        result["disable"] = set(result["disable"].split(","))
+    if isinstance(result["enable"], str) and result["enable"] != "all":
+        result["enable"] = set(result["enable"].split(","))
+    return result
+
+
+def _parse_yml_config() -> Tuple[str, Dict[str, Any]]:
+    config_yml_fname, yml_dic = __get_yml_dict()
+    if "disable" in yml_dic:
+        if not isinstance(yml_dic["disable"], list):
+            _info_action(
+                "IGNORING configuration value 'disable' expected a list"
+                + f" but found {yml_dic['disable'].__name__} ({config_yml_fname})"
+            )
+        yml_dic["disable"] = set(yml_dic["disable"])
+    if "enable" in yml_dic:
+        if not isinstance(yml_dic["enable"], list):
+            _info_action(
+                "IGNORING configuration value 'enable' expected a list"
+                + f" but found {yml_dic['enable'].__name__} ({config_yml_fname})"
+            )
+        yml_dic["enable"] = set(yml_dic["enable"])
+
+    return config_yml_fname, yml_dic
+
+
+def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
+    # check for unknown keys
+    unknown = {key for key in args if key not in _DEFAULT_CONFIG}
     if len(unknown) != 0:
-        sys.stderr.write(
-            f"Unknown command line option{'' if len(unknown) == 1 else 's'}: {unknown}\n"
+        _info_action(
+            f"IGNORING unknown configuration value{'s'[:len(unknown)^1]}: {unknown} {where}"
         )
-        sys.exit("Aborting!")
+    # remove unknown keys
+    for key in unknown:
+        del args[key]
 
-    if "silent" in kwargs:
-        _SILENT = kwargs["silent"]
-    else:
-        _SILENT = args.silent
+    # check that the values have the correct type
+    for key, val in args.items():
+        if key == "enable":
+            # "enable" is handled differently
+            continue
+        expected = type(_DEFAULT_CONFIG[key])
+        if not isinstance(val, expected):
+            _info_action(
+                f"IGNORING configuration value '{key}' expected a {expected.__name__}"
+                + f" but found {type(args[key]).__name__} {where}"
+            )
+    # install missing values
+    for key, val in _DEFAULT_CONFIG.items():
+        if key not in args:
+            args[key] = val
+    return args
 
-    if "verbose" in kwargs:
-        _VERBOSE = kwargs["verbose"]
-    else:
-        _VERBOSE = args.verbose
+    # global _SILENT, _VERSBOSE, _GLOB_CONFIG, _GLOB_SUPPRESSIONS, _FILE_SUPPRESSIONS, _LINE_SUPPRESSIONS
+    # if "silent" in kwargs:
+    #     _SILENT = kwargs["silent"]
+    # else:
+    #     _SILENT = args.silent
 
-    # Reset the config and suppressions
-    global _GLOB_CONFIG, _GLOB_SUPPRESSIONS, _FILE_SUPPRESSIONS
-    global _LINE_SUPPRESSIONS
-    _GLOB_CONFIG = _DEFAULT_CONFIG.copy()
-    _GLOB_SUPPRESSIONS = {}
-    _FILE_SUPPRESSIONS = {}
-    _LINE_SUPPRESSIONS = {}
+    # if "verbose" in kwargs:
+    #     _VERBOSE = kwargs["verbose"]
+    # else:
+    #     _VERBOSE = args.verbose
 
-    # The following are only for when this is called as a function after
+    # # Reset the config and suppressions
+    # _GLOB_CONFIG = _DEFAULT_CONFIG.copy()
+    # _GLOB_SUPPRESSIONS = set()
+    # _FILE_SUPPRESSIONS = {}
+    # _LINE_SUPPRESSIONS = {}
+
+    # kwargs is populated only for when this is called as a function after
     # importing gaplint in python, rather than when running as a script
-    args.config = {}
+    # args is populated by command line flags
+
+    # TODO check the types of kwargs[enable/disable]
+
     for key in _GLOB_CONFIG:
         if key in args:
             args.config[key] = getattr(args, key)
-        if key in kwargs:
-            args.config[key] = kwargs[key]
 
-    if "disable" in args:
-        args.config["disable"] = args.disable
-    if "disable" in kwargs:
-        args.config["disable"] = kwargs["disable"]
-
-    if "files" in kwargs:
-        if not isinstance(kwargs["files"], list):
-            sys.exit("Keyword arg 'files' must be a list")
-        args.files = kwargs["files"]
+    args.config["disable"] = set()
+    args.config["enable"] = set()
 
     files = []
     for fname in args.files:
@@ -1291,9 +1400,9 @@ def __init_config_and_suppressions_command_line(
         if key != "disable" and args.config[key] is not None:
             _GLOB_CONFIG[key] = args.config[key]
 
-    names_or_codes = args.config["disable"].split(",")
-    for name_or_code in names_or_codes:
-        _GLOB_SUPPRESSIONS[name_or_code] = None
+    for name_or_code in args.config["disable"]:
+        _GLOB_SUPPRESSIONS.add(name_or_code)
+    # TODO add enable
 
 
 def __config_yml_path(dir_path: str) -> Union[None, str]:
@@ -1322,42 +1431,19 @@ def __config_yml_path(dir_path: str) -> Union[None, str]:
     return __config_yml_path(pardir_path)  # recursive call
 
 
-def __init_config_and_suppressions_yml() -> None:
+def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
     config_yml_fname = __config_yml_path(os.getcwd())
     if config_yml_fname is None:
-        return
+        return "", {}
 
     _info_action(f"Using configurations in {config_yml_fname}")
     try:
         with open(config_yml_fname, "r", encoding="utf-8") as config_yml_file:
-            ymldic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
+            yml_dic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
     except (yaml.YAMLError, IOError):
         _info_action("IGNORING {config_yml_fname}: error parsing YAML")
-        return
-
-    if ymldic is None:
-        return
-    for key in ymldic:
-        if key not in _GLOB_CONFIG and key != "disable":
-            _info_action(
-                f"IGNORING unknown configuration value '{key}' in {config_yml_fname}"
-            )
-        elif key != "disable":
-            _GLOB_CONFIG[key] = ymldic[key]
-        else:
-            if not isinstance(ymldic[key], list):
-                _info_action(
-                    f"IGNORING {config_yml_fname}: badly formed field 'disable'"
-                )
-            else:
-                for name_or_code in ymldic[key]:
-                    if isinstance(name_or_code, str):
-                        _GLOB_SUPPRESSIONS[name_or_code] = None
-                    else:
-                        _info_action(
-                            f"IGNORING bad value {name_or_code} in field"
-                            + f" 'disable' in {config_yml_fname}"
-                        )
+        return "", {}
+    return config_yml_fname, yml_dic
 
 
 def __verify_glob_suppressions() -> None:
@@ -1383,11 +1469,11 @@ def __verify_glob_suppressions() -> None:
             delete.append(name_or_code)
 
     for name_or_code in delete:
-        del _GLOB_SUPPRESSIONS[name_or_code]
+        _GLOB_SUPPRESSIONS.remove(name_or_code)
         config_yml_fname = __config_yml_path(os.getcwd())
         msg = "IGNORING in command line "
         if config_yml_fname is not None:
-            msg += f"or {config_yml_fname}"
+            msg += f"or {config_yml_fname} "
         msg += f"invalid rule name or code: {name_or_code}"
         _info_action(msg)
 
@@ -1397,7 +1483,7 @@ def __verify_glob_suppressions() -> None:
 ###############################################################################
 
 
-def __init_rules(args: argparse.Namespace) -> None:
+def __init_rules(args: Dict[str, Any]) -> None:
     global _EXPERIMENTAL_FILE_RULES, _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
     if len(_FILE_RULES) != 0:
         return
@@ -1669,12 +1755,9 @@ def __init_rules(args: argparse.Namespace) -> None:
 ###############################################################################
 
 
-def __is_valid_rule_name_or_code(
-    name_or_code: str, fname: str, linenum: int
-) -> bool:
+def __can_disable_rule_name_or_code(name_or_code: str, where: str) -> bool:
     assert isinstance(name_or_code, str)
-    assert isinstance(fname, str)
-    assert isinstance(linenum, int)
+    assert isinstance(where, str)
 
     if name_or_code == "all":
         return True
@@ -1686,12 +1769,12 @@ def __is_valid_rule_name_or_code(
 
         if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
-                _info_action(f"IGNORING cannot disable rule: {name_or_code}")
+                _info_action(
+                    f"IGNORING cannot disable rule {name_or_code} {where}"
+                )
                 return False
             return True
-    _info_action(
-        f"IGNORING in {fname}:{linenum + 1} invalid rule name or code: {name_or_code}"
-    )
+    _info_action(f"IGNORING invalid rule name or code {name_or_code} {where}")
     return False
 
 
@@ -1705,7 +1788,9 @@ def __add_file_suppressions(
 
     for name_or_code in names_or_codes:
         assert isinstance(name_or_code, str)
-        if __is_valid_rule_name_or_code(name_or_code, fname, linenum):
+        if __can_disable_rule_name_or_code(
+            name_or_code, f"at {fname}:{linenum}"
+        ):
             if fname not in _FILE_SUPPRESSIONS:
                 _FILE_SUPPRESSIONS[fname] = {}
             _FILE_SUPPRESSIONS[fname][name_or_code] = None
@@ -1721,7 +1806,9 @@ def __add_line_suppressions(
 
     for name_or_code in names_or_codes:
         assert isinstance(name_or_code, str)
-        if __is_valid_rule_name_or_code(name_or_code, fname, linenum):
+        if __can_disable_rule_name_or_code(
+            name_or_code, f"at {fname}:{linenum}"
+        ):
             if fname not in _LINE_SUPPRESSIONS:
                 _LINE_SUPPRESSIONS[fname] = {}
             if linenum + 1 not in _LINE_SUPPRESSIONS[fname]:
@@ -1845,26 +1932,39 @@ def main(**kwargs) -> None:
                               (defaults to 1000)
         columns (int):        max characters per line (defaults to 80)
         indentation (int):    indentation of nested statements (defaults to 2)
-        disable (list):       rules (names/codes) to suppress (defaults to [])
+        disable (list):       rules (names/codes) to disable (defaults to [])
+        enable (list):        rules (names/codes) to enable (defaults to ["all"])
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
     """
     start_time = time.process_time()
-    args = _parse_args(kwargs)
-
     if __debug__:
         _info_verbose("Debug on . . .")
     else:
         _info_verbose("Debug off . . .")
 
-    if len(args.files) == 0:
+    # gather args from different places
+    cmd_line_args = _parse_cmd_line_args(kwargs)
+    config_yml_fname, yml_dic = _parse_yml_config()
+
+    # check the arg types and values, don't need to check cmd_line_args because
+    # its not possible for them to be wrong
+    __normalize_args(cmd_line_args, "(command line argument)")
+    __normalize_args(kwargs, "(keyword argument)")
+    __normalize_args(yml_dic, f"({config_yml_fname})")
+
+    args = {**cmd_line_args, **kwargs, **yml_dic}
+
+    if len(args["files"]) == 0:
         return
 
+    __init_rules(args)
+    # need Rules before we can do this
+    __init_enabled_rules(args)
     __init_config_and_suppressions_yml()
     __init_config_and_suppressions_command_line(args)
-    __init_rules(args)
-    __verify_glob_suppressions()
     __init_file_and_line_suppressions(args)
+    __verify_glob_suppressions()
 
     total_nr_warnings = 0
     max_warnings = _GLOB_CONFIG["max_warnings"]

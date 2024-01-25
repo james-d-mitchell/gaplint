@@ -48,7 +48,8 @@ class TestScript(unittest.TestCase):
                 + "W011,W012,W013,W014,W015,W016,W017,W018,W019,W020,"
                 + "W021,W022,W023,W024,W025,W026,W027,W028,W029,W030,"
                 + "W031,W032,W033,W034,W035,W036,W037,W038,W039,W040,"
-                + "W041,W042,W043,W044,W045,W046",
+                + "W041,W042,W043,W044,W045,W046,W047,W048,W049,W050,"
+                + "W051,W052",
             )
         self.assertEqual(cm.exception.code, 0)
 
