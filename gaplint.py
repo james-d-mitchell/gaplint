@@ -1175,7 +1175,7 @@ class Indentation(Rule):
 
 
 ###############################################################################
-# Functions for running this as a script instead of a module
+# TODO
 ###############################################################################
 
 
@@ -1326,7 +1326,7 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
     # check that the values have the correct type
     for key, val in args.items():
         if key == "enable":
-            # "enable" is handled differently
+            # "enable" is handled differently TODO where?
             continue
         expected = type(_DEFAULT_CONFIG[key])
         if not isinstance(val, expected):
@@ -1334,10 +1334,11 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
                 f"IGNORING configuration value '{key}' expected a {expected.__name__}"
                 + f" but found {type(args[key]).__name__} {where}"
             )
-    # install missing values
+    # Adding missing keys but leave the value unspecified, the default value or
+    # value specified elsewhere are installed in __merge_args
     for key, val in _DEFAULT_CONFIG.items():
         if key not in args:
-            args[key] = val
+            args[key] = None
     return args
 
 
@@ -1346,7 +1347,25 @@ def __merge_args(
     kwargs: Dict[str, Any],
     config_yml_fname: str,
     yml_dic: Dict[str, Any],
-):
+) -> Dict[str, Any]:
+    """
+    This function merges the 3 possible sources of arguments/configuration
+    options:
+    1. keywords args (only if not running gaplint as a script)
+    2. command line args (only if running gaplint as a script)
+    3. yaml configuration file.
+
+    This function returns the merged version of the arguments from these
+    3 sources consisting of:
+    * the union of "files" & "disable"
+    * the intersection of "enable"
+    * any other value is taken from any of the 3 sources if specified
+      (i.e. not None).
+    * if there are conflicting specified values in the 3 sources, then those in
+      kwargs and from the command line are given precedence. Note that it isn't
+      possible to have both kwargs and command line options specified, so these
+      shouldn't ever conflict.
+    """
     args = deepcopy(cmd_line_args)
     for key, val in args.items():
         if key == "disable":
@@ -1356,29 +1375,22 @@ def __merge_args(
             args[key].extend(kwargs[key])
             args[key].extend(yml_dic[key])
         elif key == "enable":
+            # handled at end
             continue
-        elif val != kwargs[key]:
-            _info_action(
-                f"CONFLICTING configuration values found '{val}' in "
-                + f"command line arguments and '{kwargs[key]}' in keyword"
-                + " arguments"
-            )
-            # sys.exit("Aborting!")
-        elif val != yml_dic[key]:
-            _info_action(
-                f"CONFLICTING configuration values found '{val}' in "
-                + f"command line arguments and '{yml_dic[key]}' in "
-                + f"{config_yml_fname}"
-            )
-            # TODO this doesn't work because we can't tell the difference
-            # between explicitly specified and default values
-            # sys.exit("Aborting!")
+        elif val is None:
+            if kwargs[key] is not None:
+                args[key] = kwargs[key]
+            elif yml_dic[key] is not None:
+                args[key] = yml_dic[key]
     key = "enable"
-    if "all" in (cmd_line_args[key], kwargs[key], yml_dic[key]):
+    if all(x == "all" for x in (args[key], kwargs[key], yml_dic[key])):
         args[key] = "all"
-    else:
+    elif args[key] == "all":
+        args[key] = set()
+    if  kwargs[key] != "all":
         args[key] &= set(kwargs[key])  # intersection
-        args[key] &= set(yml_dic[key])
+    if yml_dic[key] != "all":
+        args[key] &= set(yml_dic[key]) # intersection
     return args
 
 
@@ -1518,40 +1530,10 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
             yml_dic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
     except (yaml.YAMLError, IOError):
         _info_action("IGNORING {config_yml_fname}: error parsing YAML")
+        :q
+        :q
         return "", {}
     return config_yml_fname, yml_dic
-
-
-def __verify_glob_suppressions() -> None:
-    global _GLOB_SUPPRESSIONS  # pylint: disable=global-variable-not-assigned, global-statement
-    delete = []
-    for name_or_code in _GLOB_SUPPRESSIONS:
-        if name_or_code in ("all", ""):
-            continue
-        ok = False
-        for rule in _LINE_RULES + _FILE_RULES:
-            if isinstance(rule, GlobalRules):
-                ok = True
-                continue
-            if name_or_code in (rule.name, rule.code):
-                if rule.code[0] == "M":
-                    _info_action(
-                        f"IGNORING cannot disable rule: {name_or_code}"
-                    )
-                else:
-                    ok = True
-                break
-        if not ok:
-            delete.append(name_or_code)
-
-    for name_or_code in delete:
-        _GLOB_SUPPRESSIONS.remove(name_or_code)
-        config_yml_fname = __config_yml_path(os.getcwd())
-        msg = "IGNORING in command line "
-        if config_yml_fname is not None:
-            msg += f"or {config_yml_fname} "
-        msg += f"invalid rule name or code: {name_or_code}"
-        _info_action(msg)
 
 
 ###############################################################################
@@ -2043,8 +2025,8 @@ def main(**kwargs) -> None:
         return
 
     __init_rules(args)
-    # the next line has to come after __init_rules because we need to know what
-    # all of the rules are before we can check if we're given any bad ones
+    # The next lines has to come after __init_rules because we need to know what
+    # all of the rules are before we can check if we're given any bad ones.
     __normalize_disabled_rules(cmd_line_args, "(command line argument)")
     __normalize_disabled_rules(kwargs, "(keyword argument)")
     __normalize_disabled_rules(yml_dic, f"({config_yml_fname})")
@@ -2053,7 +2035,6 @@ def main(**kwargs) -> None:
     __init_config_and_suppressions_yml()
     __init_config_and_suppressions_command_line(args)
     __init_file_and_line_suppressions(args)
-    __verify_glob_suppressions()
 
     total_nr_warnings = 0
     max_warnings = _GLOB_CONFIG["max_warnings"]
