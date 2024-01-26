@@ -71,7 +71,6 @@ _DEFAULT_CONFIG = {
     "columns": 80,
     "disable": set(),
     "dupl-func-min-len": 4,
-    "enable-experimental": False,
     "enable": set(),
     "indentation": 2,
     "silent": False,
@@ -86,7 +85,6 @@ _LINE_SUPPRESSIONS = {}
 
 _LINE_RULES = []
 _FILE_RULES = []
-_EXPERIMENTAL_FILE_RULES = []
 
 _ESCAPE_PATTERN = re.compile(r"(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)")
 
@@ -290,119 +288,6 @@ class WarnRegexBase(Rule):
         Returns True if this rule should not be applied to fname.
         """
         return self._skip(fname)
-
-
-###############################################################################
-# Global rules
-###############################################################################
-
-
-class GlobalRules:
-    """
-    A class for containing rules that should be applied to all the input
-    files, such as AnalyseDecls. This is an experimental feature.
-    """
-
-    def __init__(self):
-        self.gd_files = {}
-        self.gi_files = ""
-        self.xml_files = ""
-        self._rules = []
-        self._global_rules = []
-
-    def add_rule(self, global_rule: Rule) -> None:
-        """Adds a rule to the global rules to be applied."""
-        self._global_rules.append(global_rule)
-
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
-        assert isinstance(fname, str)
-        assert isinstance(lines, str)
-        assert isinstance(nr_warnings, int)
-        if fname.split(".")[-1] == "gd":
-            self.gd_files[fname] = lines
-        elif fname.split(".")[-1] == "gi":
-            self.gi_files += lines
-        elif fname.split(".")[-1] == "xml":
-            self.xml_files += lines
-        return nr_warnings, lines
-
-    def apply_rules(self, nr_warnings: int):
-        """Applies all the currently added global rules."""
-        for global_rule in self._global_rules:
-            nr_warnings = global_rule(self, nr_warnings)
-        return nr_warnings
-
-
-class AnalyseDecls(Rule):
-    """
-    A global rule that detects operations/attributes/properties that are
-    declared but not documented or not implemented.
-    """
-
-    def __init__(self, name: str, code: str) -> None:
-        Rule.__init__(self, name, code)
-        self._patterns = [
-            (
-                re.compile(r"DeclareOperation\(\"(\w+)"),
-                "operation",
-            ),
-            (
-                re.compile(r"DeclareAttribute\(\"(\w+)"),
-                "attribute",
-            ),
-            (
-                re.compile(r"DeclareProperty\(\"(\w+)"),
-                "property",
-            ),
-            (
-                re.compile(r"DeclareGlobalFunction\(\"(\w+)"),
-                "global function",
-            ),
-            (
-                re.compile(r"BindGlobal\(\"(\w+)"),
-                "global value",
-            ),
-        ]
-
-    def __call__(self, global_rules: GlobalRules, nr_warnings: int) -> int:
-        for gd_fname, gd_file in global_rules.gd_files.items():
-            for decl, name in self._patterns:
-                for decl_match in decl.finditer(gd_file):
-                    decl_name = re.compile(decl_match.group(1))
-                    if not decl_name.search(
-                        global_rules.gi_files
-                    ) and not decl_name.search(
-                        gd_file,
-                        decl_match.start() + len(decl.pattern) + 1,
-                    ):
-                        nr_warnings += 1
-                        msg = (
-                            f"{name} {decl_name.pattern} declared, but not used"
-                        )
-                        _warn(
-                            self,
-                            gd_fname,
-                            gd_file.count("\n", 0, decl_match.start()),
-                            msg,
-                        )
-                    doc_pattern = re.compile(
-                        rf'Name\s*=\s*"{decl_name.pattern}"'
-                    )
-                    if not decl_name.pattern.endswith(
-                        "NC"
-                    ) and not doc_pattern.search(global_rules.xml_files):
-                        nr_warnings += 1
-                        msg = f"{name} {decl_name.pattern} declared, but not documented"
-                        _warn(
-                            self,
-                            gd_fname,
-                            gd_file.count("\n", 0, decl_match.start()),
-                            msg,
-                        )
-
-        return nr_warnings
 
 
 ###############################################################################
@@ -1182,6 +1067,9 @@ class Indentation(Rule):
 def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
     """
     Pass kwargs as an argument for the check for \"files\" o/w not needed.
+    Note that the default value for each argument is set to None here, so that
+    we can detect where a parameter was actually set in __merge_args. The
+    actual default value is installed in __merge_args.
     """
     parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
     if "files" not in kwargs:
@@ -1192,7 +1080,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--max-warnings",
         nargs="?",
         type=int,
-        default=default,
+        default=None,
         help=f"maximum number of warnings before giving up (default: {default})",
     )
 
@@ -1201,7 +1089,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--columns",
         nargs="?",
         type=int,
-        default=default,
+        default=None,
         help=f"maximum number of characters per line (default: {default})",
     )
 
@@ -1210,7 +1098,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--disable",
         nargs="?",
         type=str,
-        default=default,
+        default=None,
         help="comma separated rule names and/or codes to disable (default: None)",
     )
 
@@ -1218,27 +1106,18 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
     parser.add_argument(
         "--dupl-func-min-len",
         dest="dupl_func_min_len",
-        default=default,
+        default=None,
         type=int,
         nargs="?",
         help="report warnings for duplicate functions with more than "
         + f"this many lines (default: {default})",
     )
 
-    default = _DEFAULT_CONFIG["enable-experimental"]
-    parser.add_argument(
-        "--enable-experimental",
-        dest="enable_experimental",
-        default=default,
-        action="store_true",
-        help=f"enable some experimental rules (default: {default})",
-    )
-
     parser.add_argument(
         "--enable",
         nargs="?",
         type=str,
-        default="all",
+        default=None,
         help='comma separated rule names and/or codes to enable (default: "all")',
     )
 
@@ -1247,7 +1126,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--indentation",
         nargs="?",
         type=int,
-        default=default,
+        default=None,
         help=f"indentation of nested statements (default: {default})",
     )
 
@@ -1256,7 +1135,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--silent",
         dest="silent",
         action="store_true",
-        default=default,
+        default=None,
         help=f"silence all warnings (default: {default})",
     )
 
@@ -1265,7 +1144,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--verbose",
         dest="verbose",
         action="store_true",
-        default=default,
+        default=None,
         help=f"enable verbose mode (default: {default})",
     )
 
@@ -1325,11 +1204,14 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
 
     # check that the values have the correct type
     for key, val in args.items():
-        if key == "enable":
-            # "enable" is handled differently TODO where?
-            continue
         expected = type(_DEFAULT_CONFIG[key])
-        if not isinstance(val, expected):
+        # val is None means that it wasn't speficied
+        if val is not None and (
+            (
+                not isinstance(val, expected)
+                or (key == "enable" and val == "all")
+            )
+        ):
             _info_action(
                 f"IGNORING configuration value '{key}' expected a {expected.__name__}"
                 + f" but found {type(args[key]).__name__} {where}"
@@ -1355,42 +1237,55 @@ def __merge_args(
     2. command line args (only if running gaplint as a script)
     3. yaml configuration file.
 
-    This function returns the merged version of the arguments from these
-    3 sources consisting of:
-    * the union of "files" & "disable"
-    * the intersection of "enable"
-    * any other value is taken from any of the 3 sources if specified
-      (i.e. not None).
+    This function returns the merged version of the arguments from these 3
+    sources consisting of:
+    * any value is taken from any of the 3 sources if specified (i.e. not None).
     * if there are conflicting specified values in the 3 sources, then those in
       kwargs and from the command line are given precedence. Note that it isn't
       possible to have both kwargs and command line options specified, so these
       shouldn't ever conflict.
     """
+
+    def conflict_msg(key, val1, where1, val2, where2):
+        _info_action(
+            f"CONFLICTING configuration values for '{key}' found '{val1}' in "
+            + f"{where1} and '{val2}' in {where2}, using '{val1}'!"
+        )
+
     args = deepcopy(cmd_line_args)
     for key, val in args.items():
-        if key == "disable":
-            args[key] |= set(kwargs[key])  # union
-            args[key] |= set(yml_dic[key])
-        elif key == "files":
-            args[key].extend(kwargs[key])
-            args[key].extend(yml_dic[key])
-        elif key == "enable":
+        if key == "enable":
             # handled at end
             continue
-        elif val is None:
+        if val is None:
             if kwargs[key] is not None:
                 args[key] = kwargs[key]
             elif yml_dic[key] is not None:
                 args[key] = yml_dic[key]
-    key = "enable"
-    if all(x == "all" for x in (args[key], kwargs[key], yml_dic[key])):
-        args[key] = "all"
-    elif args[key] == "all":
-        args[key] = set()
-    if  kwargs[key] != "all":
-        args[key] &= set(kwargs[key])  # intersection
-    if yml_dic[key] != "all":
-        args[key] &= set(yml_dic[key]) # intersection
+            else:
+                args[key] = _DEFAULT_CONFIG[key]
+            if (
+                kwargs[key] is not None
+                and yml_dic[key] is not None
+                and kwargs[key] != yml_dic[key]
+            ):
+                conflict_msg(
+                    key,
+                    kwargs[key],
+                    "keyword arguments",
+                    yml_dic[key],
+                    config_yml_fname,
+                )
+        else:
+            assert kwargs[key] is None
+            if yml_dic[key] is not None and yml_dic[key] != val:
+                conflict_msg(
+                    key,
+                    val,
+                    "command line arguments",
+                    yml_dic[key],
+                    config_yml_fname,
+                )
     return args
 
 
@@ -1400,23 +1295,31 @@ def __normalize_disabled_rules(
     # Rules can only be enabled globally, at the command line, as a keyword
     # argument when calling gaplint as a function in python, or in a config
     # file.
-    def normalize_codes(codes: Set[str]) -> Set[str]:
-        lcodes = list(codes)  # better way?
-        for i, code in enumerate(lcodes):
-            __can_disable_rule_name_or_code(code, where)
-            lcodes[i] = Rule.to_code(code)
-        return set(codes)
+    def normalize_codes(codes_and_or_names: Set[str]) -> Set[str]:
+        codes = set()
+        for code_or_name in codes_and_or_names:
+            if __can_disable_rule_name_or_code(code_or_name, where):
+                codes.add(Rule.to_code(code_or_name))
+        return codes
+
+    if args["disable"] is None and args["enable"] is None:
+        return args
+
+    if args["disable"] is None:
+        disabled = set()
+    else:
+        disabled = normalize_codes(args["disable"])
 
     all_codes = Rule.all_suppressible_codes()
-
-    disabled = normalize_codes(args["disable"])
-
-    if args["enable"] == "all":
+    if args["enable"] is None or args["enable"] == "all":
         enabled = all_codes
     else:
         enabled = normalize_codes(args["enable"])
 
+    disabled.difference_update(enabled)
     disabled |= all_codes - enabled  # union
+
+    args["disable"] = disabled
 
     # Special case for AnalyseLVars.SubRules since they are covered by two
     # codes W000 and the subrule code.
@@ -1530,8 +1433,6 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
             yml_dic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
     except (yaml.YAMLError, IOError):
         _info_action("IGNORING {config_yml_fname}: error parsing YAML")
-        :q
-        :q
         return "", {}
     return config_yml_fname, yml_dic
 
@@ -1542,22 +1443,19 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
 
 
 def __init_rules(args: Dict[str, Any]) -> None:
-    global _EXPERIMENTAL_FILE_RULES, _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
+    global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
     if len(_FILE_RULES) != 0:
         return
-    _EXPERIMENTAL_FILE_RULES = [
-        WarnRegexFile(
-            "combine-ifs-with-elif",
-            "W998",
-            r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)"
-            + r"(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
-            "Combine multiple ifs using elif",
-        ),
-    ]
+        # WarnRegexFile(
+        #     "combine-ifs-with-elif",
+        #     "W998",
+        #     r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)"
+        #     + r"(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
+        #     "Combine multiple ifs using elif",
+        # ),
     _FILE_RULES = [
         ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000"),
         ReplaceComments("replace-comments", "M002"),
-        GlobalRules(),
         ReplaceOutputTstOrXMLFile("replace-output-tst-or-xml-file", "M001"),
         ReplaceBetweenDelimiters(
             "replace-multiline-strings", "M003", r'"""', r'"""'
@@ -1590,8 +1488,6 @@ def __init_rules(args: Dict[str, Any]) -> None:
             'Replace "if X then return true; else return false;" by "X"',
         ),
     ]
-    if args["enable-experimental"]:
-        _FILE_RULES += _EXPERIMENTAL_FILE_RULES
     _LINE_RULES = [
         LineTooLong("line-too-long", "W002"),
         Indentation("indentation", "W003"),
@@ -1822,9 +1718,6 @@ def __can_disable_rule_name_or_code(name_or_code: str, where: str) -> bool:
     for rule in itertools.chain(
         iter(_LINE_RULES), iter(_FILE_RULES), AnalyseLVars.SubRules.values()
     ):
-        if isinstance(rule, GlobalRules):
-            continue
-
         if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
                 _info_action(
@@ -1919,19 +1812,15 @@ def __init_file_and_line_suppressions(args: argparse.Namespace) -> None:
             linenum += 1
 
 
-def _is_rule_suppressed(
-    fname: str, linenum: int, rule: Union[Rule, GlobalRules]
-) -> bool:
+def _is_rule_suppressed(fname: str, linenum: int, rule: Rule) -> bool:
     """
     Takes a filename, line number, and rule. Returns True if the rule is
     suppressed for that particular line, and False otherwise.
     """
     assert isinstance(fname, str)
     assert isinstance(linenum, int)
-    assert isinstance(rule, (Rule, GlobalRules))
+    assert isinstance(rule, Rule)
 
-    if isinstance(rule, GlobalRules):
-        return False
     assert rule.code is not None
     assert rule.name is not None
     if rule.code[0] == "M":
@@ -2011,18 +1900,6 @@ def main(**kwargs) -> None:
     cmd_line_args = __normalize_args(cmd_line_args, "(command line argument)")
     kwargs = __normalize_args(kwargs, "(keyword argument)")
     yml_dic = __normalize_args(yml_dic, f"({config_yml_fname})")
-    print(cmd_line_args)
-    args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
-    print(cmd_line_args)
-
-    # TODO init_globals
-    _SILENT = args["silent"]
-    _VERBOSE = args["verbose"]
-    _GLOB_CONFIG = args
-
-    print(args)
-    if len(args["files"]) == 0:
-        return
 
     __init_rules(args)
     # The next lines has to come after __init_rules because we need to know what
@@ -2030,6 +1907,17 @@ def main(**kwargs) -> None:
     __normalize_disabled_rules(cmd_line_args, "(command line argument)")
     __normalize_disabled_rules(kwargs, "(keyword argument)")
     __normalize_disabled_rules(yml_dic, f"({config_yml_fname})")
+
+    args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
+
+    # TOD init_globals
+    _SILENT = args["silent"]
+    _VERBOSE = args["verbose"]
+    _GLOB_CONFIG = args
+
+    if len(args["files"]) == 0:
+        return
+    print(args)
 
     # TODO initialise suppressions dicts
     __init_config_and_suppressions_yml()
@@ -2039,8 +1927,6 @@ def main(**kwargs) -> None:
     total_nr_warnings = 0
     max_warnings = _GLOB_CONFIG["max_warnings"]
     global_rules = _FILE_RULES[2]
-    if args.enable_experimental:
-        global_rules.add_rule(AnalyseDecls("analyse-decls", "W999"))
 
     def too_many_warnings(nr_warnings):
         if nr_warnings >= max_warnings:
@@ -2073,9 +1959,6 @@ def main(**kwargs) -> None:
         for rule in _LINE_RULES:
             rule.reset()
         total_nr_warnings += nr_warnings
-
-    if args.enable_experimental:
-        total_nr_warnings = global_rules.apply_rules(total_nr_warnings)
 
     if not _SILENT:
         if total_nr_warnings == 0:
