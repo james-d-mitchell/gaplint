@@ -69,7 +69,7 @@ _DEFAULT_CONFIG = {
     "columns": 80,
     "disable": set(),
     "dupl-func-min-len": 4,
-    "enable": set(),
+    "enable": "all",
     "indentation": 2,
     "silent": False,
     "verbose": False,
@@ -169,7 +169,7 @@ def _info_verbose(msg: str) -> None:
 ###############################################################################
 
 
-class Rule:  # pylint: disable=too-few-public-methods
+class Rule:
     """
     Base class for rules.
 
@@ -196,18 +196,6 @@ class Rule:  # pylint: disable=too-few-public-methods
         if name_or_code in Rule.all_names:
             return Rule.all_names[name_or_code]
         return name_or_code
-
-    @staticmethod
-    # TODO set instead of list?
-    def to_codes(names: List[str]) -> List[str]:
-        """
-        Get the codes of a list of rules by their names.
-        """
-        return [Rule.all_names[name] for name in names]
-
-    # all_codes |= set(
-    #     x for x in Rule.all_names if x and not x.startswith("replace")
-    # )
 
     def __init__(self, name: Optional[str] = None, code: Optional[str] = None):
         assert isinstance(name, str) or (name is None and code is None)
@@ -341,7 +329,7 @@ class ReplaceAnnoyUTF8Chars(Rule):
         # Remove annoying characters
         def replace_chars(
             match: re.Match,
-        ) -> str:  # pylint: disable=missing-docstring
+        ) -> str:
             char = match.group(0)
             return self._chars[char]
 
@@ -532,6 +520,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._ws1_p = re.compile(r"[ \t\r\f\v]+")
         self._ws2_p = re.compile(r"\n[ \t\r\f\v]+")
         self._rec_p = re.compile(r"\brec\(")
+        self._comment_p = re.compile(r" *#.*?\n")
         self._func_bodies = []
         self._func_position = []
 
@@ -545,6 +534,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
 
     def _remove_recs_and_whitespace(self, lines: str) -> str:
         # Remove almost all whitespace
+        lines = re.sub(self._comment_p, "\n", lines)
         lines = re.sub(self._ws1_p, " ", lines)
         lines = re.sub(self._ws2_p, "\n", lines)
 
@@ -652,7 +642,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 fname, linenum + 1, AnalyseLVars.SubRules["W047"]
             ):
                 msg = f"Unused function arguments: {', '.join(func_args)}"
-                _warn(self, fname, linenum, msg)
+                _warn(self.SubRules["W047"], fname, linenum, msg)
                 nr_warnings += 1
         return nr_warnings
 
@@ -703,7 +693,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 and re.search(rf"\breturn\b\s+\b{bval}\b", line)
             ):
                 _warn(
-                    self,
+                    self.SubRules[code],
                     fname,
                     linenum,
                     f"Replace one line function by Return{bval.capitalize()}",
@@ -718,7 +708,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             and re.search(rf"\breturn\b\s+\b{func_args_all[0]}\s*;", line)
         ):
             _warn(
-                self,
+                self.SubRules["W052"],
                 fname,
                 linenum,
                 "Replace function(x, y) return x; end; by ReturnFirst",
@@ -756,7 +746,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             ass_lvars, fname, linenum, nr_warnings
         )
         nr_warnings = self._check_unused_lvars(
-            ass_lvars, fname, linenum, nr_warnings
+            decl_lvars, fname, linenum, nr_warnings
         )
         nr_warnings = self._check_unused_func_args(
             func_args, fname, linenum, nr_warnings
@@ -1224,8 +1214,10 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
         # val is None means that it wasn't speficied
         if val is not None and (
             (
-                not isinstance(val, expected)
-                or (key == "enable" and val == "all")
+                not (
+                    isinstance(val, expected)
+                    or (key == "enable" and isinstance(val, set))
+                )
             )
         ):
             _info_action(
@@ -1268,6 +1260,10 @@ def __merge_args(
     """
 
     def conflict_msg(key, val1, where1, val2, where2):
+        if isinstance(val1, set):
+            val1 = ", ".join(sorted(list(val1)))
+        if isinstance(val2, set):
+            val2 = ", ".join(sorted(list(val2)))
         _info_action(
             f"CONFLICTING configuration values for '{key}' found '{val1}' in "
             + f"{where1} and '{val2}' in {where2}, using '{val1}'!"
@@ -1337,9 +1333,10 @@ def __normalize_disabled_rules(
     disabled |= all_codes - enabled  # union
 
     args["disable"] = disabled
+    args["enable"] = None
 
     # Special case for AnalyseLVars.SubRules since they are covered by two
-    # codes W000 and the subrule code.
+    # codes: W000; and the subrule code.
     if (
         any(x.code in enabled for x in AnalyseLVars.SubRules.values())
         and "W000" in args["disable"]
@@ -1761,7 +1758,7 @@ def __add_line_suppressions(
             _LINE_SUPPRESSIONS[fname][linenum + 1][name_or_code] = None
 
 
-# FIXME this should be a line rule called before any other line rule, to avoid
+# TODO this should be a line rule called before any other line rule, to avoid
 # reading the files more than once
 def __init_file_and_line_suppressions(args: Dict[str, Any]) -> None:
     comment_line_p = re.compile(r"^\s*($|#)")
@@ -1819,12 +1816,14 @@ def _is_rule_suppressed(fname: str, linenum: int, rule: Rule) -> bool:
     if (
         "all" in _GLOB_SUPPRESSIONS
         or rule.code in _GLOB_SUPPRESSIONS
+        # TODO remove name from this
         or rule.name in _GLOB_SUPPRESSIONS
     ):
         return True
     if fname in _FILE_SUPPRESSIONS and (
         "all" in _FILE_SUPPRESSIONS[fname]
         or rule.code in _FILE_SUPPRESSIONS[fname]
+        # TODO remove name from this
         or rule.name in _FILE_SUPPRESSIONS[fname]
     ):
         return True
@@ -1834,6 +1833,8 @@ def _is_rule_suppressed(fname: str, linenum: int, rule: Rule) -> bool:
         and linenum in _LINE_SUPPRESSIONS[fname]
         and (
             rule.code in _LINE_SUPPRESSIONS[fname][linenum]
+            # TODO remove name from this, since now all suppressions are done via
+            # codes
             or rule.name in _LINE_SUPPRESSIONS[fname][linenum]
         )
     ):
@@ -1872,7 +1873,7 @@ def __at_exit(
     sys.exit(total_num_warnings > 0)
 
 
-def main(**kwargs) -> None:
+def main(**kwargs) -> None:  # pylint: disable=too-many-locals
     """
     This function applies all rules in this module to the files specified by
     the keywords argument files.
@@ -1903,23 +1904,26 @@ def main(**kwargs) -> None:
     kwargs = _parse_kwargs(kwargs)
     config_yml_fname, yml_dic = _parse_yml_config()
 
-    # check the arg types and values, don't need to check cmd_line_args because
-    # its not possible for them to be wrong
+    # check the arg types and values
     cmd_line_args = __normalize_args(cmd_line_args, "(command line argument)")
     kwargs = __normalize_args(kwargs, "(keyword argument)")
     yml_dic = __normalize_args(yml_dic, f"({config_yml_fname})")
 
     __init_rules()
 
+    args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
     # The next lines has to come after __init_rules because we need to know what
     # all of the rules are before we can check if we're given any bad ones.
-    cmd_line_args = __normalize_disabled_rules(
-        cmd_line_args, "(command line argument)"
-    )
-    kwargs = __normalize_disabled_rules(kwargs, "(keyword argument)")
-    yml_dic = __normalize_disabled_rules(yml_dic, f"({config_yml_fname})")
+    key = "disable"
+    where = ""
+    if args[key] == cmd_line_args[key]:
+        where = "(command line arguments)"
+    elif args[key] == kwargs[key]:
+        where = "(keyword argument)"
+    elif args[key] == yml_dic[key]:
+        where = f"({config_yml_fname})"
 
-    args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
+    args = __normalize_disabled_rules(args, where)
     args = __normalize_files(args)
     __init_globals(args)
 
