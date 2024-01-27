@@ -26,7 +26,6 @@ import yaml
 
 _VERBOSE = False
 _SILENT = False
-_VALID_EXTENSIONS = set(["g", "g.txt", "gi", "gd", "gap", "tst", "xml"])
 _GAP_KEYWORDS = {
     "and",
     "atomic",
@@ -65,7 +64,6 @@ _GAP_KEYWORDS = {
     "Assert",
 }
 
-# TODO add more?
 _DEFAULT_CONFIG = {
     "max-warnings": 1000,
     "columns": 80,
@@ -660,7 +658,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
 
     def _check_dupl_funcs(self, func_body, fname, linenum, nr_warnings):
         num_func_lines = func_body.count("\n")
-        limit = _GLOB_CONFIG["duplicate-function-min-length"]
+        limit = _GLOB_CONFIG["dupl-func-min-len"]
         if num_func_lines + 1 > limit:
             if not _is_rule_suppressed(
                 fname, linenum + 1, self
@@ -887,19 +885,19 @@ class LineTooLong(Rule):
         self, name: Optional[str] = None, code: Optional[str] = None
     ) -> None:
         Rule.__init__(self, name, code)
-        self._cols = _GLOB_CONFIG["columns"]
 
     def __call__(
         self, fname: str, lines: str, linenum: int, nr_warnings: int = 0
     ) -> Tuple[int, str]:
+        cols = _GLOB_CONFIG["columns"]
         if _is_tst_or_xml_file(fname):
             return nr_warnings, lines
-        if len(lines[linenum]) - 1 > self._cols:
+        if len(lines[linenum]) - 1 > cols:
             _warn(
                 self,
                 fname,
                 linenum,
-                f"Too long line ({len(lines[linenum]) - 1} / {self._cols})",
+                f"Too long line ({len(lines[linenum]) - 1} / {cols})",
             )
             nr_warnings += 1
         return nr_warnings, lines
@@ -1002,23 +1000,34 @@ class Indentation(Rule):
 
     def __init__(self, name: str, code: str) -> None:
         Rule.__init__(self, name, code)
-        ind = _GLOB_CONFIG["indentation"]
         self._expected = 0
-        self._before = [
-            (re.compile(r"(\W|^)(elif|else)(\W|$)"), -ind),
-            (re.compile(r"(\W|^)end(\W|$)"), -ind),
-            (re.compile(r"(\W|^)(od|fi)(\W|$)"), -ind),
-            (re.compile(r"(\W|^)until(\W|$)"), -ind),
-        ]
-        self._after = [
-            (re.compile(r"(\W|^)(then|do)(\W|$)"), -ind),
-            (re.compile(r"(\W|^)(repeat|else)(\W|$)"), ind),
-            (re.compile(r"(\W|^)function(\W|$)"), ind),
-            (re.compile(r"(\W|^)(if|for|while|elif|atomic)(\W|$)"), 2 * ind),
-        ]
         self._indent = re.compile(r"^(\s*)\S")
         self._blank = re.compile(r"^\s*$")
+        self._before = None
+        self._after = None
         self._msg = "Bad indentation: found %d but expected at least %d"
+
+    # Really initialize outside __init__ because rules are instanstiated
+    # **before** __GLOB_CONFIG is initialised.
+    def __init_real(self):
+        if self._before is None:
+            assert self._after is None
+            ind = _GLOB_CONFIG["indentation"]
+            self._before = [
+                (re.compile(r"(\W|^)(elif|else)(\W|$)"), -ind),
+                (re.compile(r"(\W|^)end(\W|$)"), -ind),
+                (re.compile(r"(\W|^)(od|fi)(\W|$)"), -ind),
+                (re.compile(r"(\W|^)until(\W|$)"), -ind),
+            ]
+            self._after = [
+                (re.compile(r"(\W|^)(then|do)(\W|$)"), -ind),
+                (re.compile(r"(\W|^)(repeat|else)(\W|$)"), ind),
+                (re.compile(r"(\W|^)function(\W|$)"), ind),
+                (
+                    re.compile(r"(\W|^)(if|for|while|elif|atomic)(\W|$)"),
+                    2 * ind,
+                ),
+            ]
 
     def __call__(
         self, fname: str, lines: List[str], linenum: int, nr_warnings: int = 0
@@ -1028,6 +1037,7 @@ class Indentation(Rule):
         assert isinstance(linenum, int)
         assert isinstance(nr_warnings, int)
         assert self._expected >= 0
+        self.__init_real()
 
         if (
             _is_rule_suppressed(fname, linenum, self)
@@ -1173,22 +1183,27 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
 
 def _parse_yml_config() -> Tuple[str, Dict[str, Any]]:
     config_yml_fname, yml_dic = __get_yml_dict()
-    if "disable" in yml_dic:
-        if not isinstance(yml_dic["disable"], list):
-            _info_action(
-                "IGNORING configuration value 'disable' expected a list"
-                + f" but found {yml_dic['disable'].__name__} ({config_yml_fname})"
-            )
-        yml_dic["disable"] = set(yml_dic["disable"])
-    if "enable" in yml_dic:
-        if not isinstance(yml_dic["enable"], list):
-            _info_action(
-                "IGNORING configuration value 'enable' expected a list"
-                + f" but found {yml_dic['enable'].__name__} ({config_yml_fname})"
-            )
-        yml_dic["enable"] = set(yml_dic["enable"])
+    for key in ("disable", "enable"):
+        if yml_dic is not None and key in yml_dic:
+            if not isinstance(yml_dic[key], list) or any(
+                not isinstance(x, str) for x in yml_dic[key]
+            ):
+                _info_action(
+                    f"IGNORING configuration value '{key}' expected 'list'"
+                    + f" but found '{type(yml_dic[key]).__name__}' ({config_yml_fname})"
+                )
+                del yml_dic[key]
+            else:
+                yml_dic[key] = set(yml_dic[key])
 
     return config_yml_fname, yml_dic
+
+
+def _parse_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    # TODO check all the args
+    if "disable" in kwargs and isinstance(kwargs["disable"], str):
+        kwargs["disable"] = set(kwargs["disable"].split(","))
+    return kwargs
 
 
 def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
@@ -1202,6 +1217,7 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
     for key in unknown:
         del args[key]
 
+    unknown.clear()
     # check that the values have the correct type
     for key, val in args.items():
         expected = type(_DEFAULT_CONFIG[key])
@@ -1216,6 +1232,11 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
                 f"IGNORING configuration value '{key}' expected a {expected.__name__}"
                 + f" but found {type(args[key]).__name__} {where}"
             )
+            unknown.add(key)
+    # remove known keys with bad values
+    for key in unknown:
+        del args[key]
+
     # Adding missing keys but leave the value unspecified, the default value or
     # value specified elsewhere are installed in __merge_args
     for key, val in _DEFAULT_CONFIG.items():
@@ -1313,7 +1334,6 @@ def __normalize_disabled_rules(
     else:
         enabled = normalize_codes(args["enable"])
 
-    disabled.difference_update(enabled)
     disabled |= all_codes - enabled  # union
 
     args["disable"] = disabled
@@ -1327,72 +1347,44 @@ def __normalize_disabled_rules(
         args["disable"].remove("W000")
     return args
 
-    # global _SILENT, _VERSBOSE, _GLOB_CONFIG, _GLOB_SUPPRESSIONS, _FILE_SUPPRESSIONS, _LINE_SUPPRESSIONS
-    # if "silent" in kwargs:
-    #     _SILENT = kwargs["silent"]
-    # else:
-    #     _SILENT = args.silent
 
-    # if "verbose" in kwargs:
-    #     _VERBOSE = kwargs["verbose"]
-    # else:
-    #     _VERBOSE = args.verbose
-
-    # # Reset the config and suppressions
-    # _GLOB_CONFIG = _DEFAULT_CONFIG.copy()
-    # _GLOB_SUPPRESSIONS = set()
-    # _FILE_SUPPRESSIONS = {}
-    # _LINE_SUPPRESSIONS = {}
-
-    # kwargs is populated only for when this is called as a function after
-    # importing gaplint in python, rather than when running as a script
-    # args is populated by command line flags
-
-    # TODO check the types of kwargs[enable/disable]
-
-    for key in _GLOB_CONFIG:
-        if key in args:
-            args.config[key] = getattr(args, key)
-
-    args.config["disable"] = set()
-    args.config["enable"] = set()
-
+def __normalize_files(args: Dict[str, Any]):
+    valid_extensions = set(["g", "g.txt", "gi", "gd", "gap", "tst", "xml"])
     files = []
-    for fname in args.files:
+    for fname in args["files"]:
         if not (exists(fname) and isfile(fname)):
             _info_action(f"SKIPPING {fname}: cannot open for reading")
         elif (
-            fname.split(".")[-1] not in _VALID_EXTENSIONS
-            and ".".join(fname.split(".")[-2:]) not in _VALID_EXTENSIONS
+            fname.split(".")[-1] not in valid_extensions
+            and ".".join(fname.split(".")[-2:]) not in valid_extensions
         ):
             _info_action(f"IGNORING {fname}: not a valid file extension")
         else:
             files.append(fname)
-    args.files = files
-
+    args["files"] = files
     return args
 
 
 ###############################################################################
-# Global configuration and suppressions - run before defining RULES
+# Globals
 ###############################################################################
 
 
-def __init_config_and_suppressions_command_line(
-    args: argparse.Namespace,
+def __init_globals(
+    args: Dict[str, Any],
 ) -> None:
-    assert isinstance(args, argparse.Namespace)
-    assert hasattr(args, "files")
-    assert hasattr(args, "config")
-    assert "disable" in args.config
+    global _SILENT, _VERBOSE, _GLOB_CONFIG  # pylint: disable=global-statement
 
-    for key in args.config:
-        if key != "disable" and args.config[key] is not None:
-            _GLOB_CONFIG[key] = args.config[key]
+    # init global config values
+    _SILENT = args["silent"]
+    _VERBOSE = args["verbose"]
+    _GLOB_CONFIG = args
 
-    for name_or_code in args.config["disable"]:
-        _GLOB_SUPPRESSIONS.add(name_or_code)
-    # TODO add enable
+    # init suppressions
+    for code in args["disable"]:
+        # TODO remove this, just remove the rule from the list
+        _GLOB_SUPPRESSIONS.add(code)
+    __init_file_and_line_suppressions(args)
 
 
 def __config_yml_path(dir_path: str) -> Union[None, str]:
@@ -1433,6 +1425,9 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
     except (yaml.YAMLError, IOError):
         _info_action("IGNORING {config_yml_fname}: error parsing YAML")
         return "", {}
+    # yml_dic can be None if the file is empty
+    if yml_dic is None:
+        yml_dic = {}
     return config_yml_fname, yml_dic
 
 
@@ -1441,9 +1436,8 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
 ###############################################################################
 
 
-def __init_rules(args: Dict[str, Any]) -> None:
-    global _FILE_RULES, _LINE_RULES, _GLOB_CONFIG  # pylint: disable=global-statement
-    _GLOB_CONFIG = args
+def __init_rules() -> None:
+    global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
     if len(_FILE_RULES) != 0:
         return
         # WarnRegexFile(
@@ -1769,10 +1763,7 @@ def __add_line_suppressions(
 
 # FIXME this should be a line rule called before any other line rule, to avoid
 # reading the files more than once
-def __init_file_and_line_suppressions(args: argparse.Namespace) -> None:
-    assert isinstance(args, argparse.Namespace)
-    assert hasattr(args, "files")
-
+def __init_file_and_line_suppressions(args: Dict[str, Any]) -> None:
     comment_line_p = re.compile(r"^\s*($|#)")
     gaplint_p = re.compile(r"\s*#\s*gaplint:\s*disable\s*=\s*")
     rules_p = re.compile(r"[a-zA-Z0-9_\-]+")
@@ -1780,12 +1771,12 @@ def __init_file_and_line_suppressions(args: argparse.Namespace) -> None:
     this_line_p = re.compile(r"#\s*gaplint:\s*disable\s*=\s*")
     next_line_p = re.compile(r"#\s* gaplint:\s*disable\(nextline\)=\s*")
 
-    for fname in args.files:
+    for fname in args["files"]:
         try:
             with open(fname, "r", encoding="utf8") as f:
                 lines = f.readlines()
         except IOError:
-            _info_action(f"cannot read file {fname}, this shouldn't happen")
+            _info_action(f"IGNORING unreadable file {fname}!")
             continue
         linenum = 0
         # Find rules suppressed for the entire file at the start of the file
@@ -1855,10 +1846,10 @@ def _is_rule_suppressed(fname: str, linenum: int, rule: Rule) -> bool:
 ###############################################################################
 
 
-def _verbose_msg_per_file(args: argparse.Namespace, fname: str, i: int) -> None:
-    num_files = len(args.files)
+def __verbose_msg_per_file(args: Dict[str, Any], fname: str, i: int) -> None:
+    num_files = len(args["files"])
     num_digits = len(str(num_files))
-    prefix_len = max(len(x) for x in args.files) + 2
+    prefix_len = max(len(x) for x in args["files"]) + 2
     index_str = str(i + 1).rjust(num_digits)
 
     _info_verbose(
@@ -1866,7 +1857,21 @@ def _verbose_msg_per_file(args: argparse.Namespace, fname: str, i: int) -> None:
     )
 
 
-# pylint: disable=too-many-branches, too-many-locals
+def __at_exit(
+    args: Dict[str, Any], total_num_warnings: int, start_time: float
+) -> None:
+    if not _SILENT:
+        if total_num_warnings == 0:
+            write_to = sys.stdout
+        else:
+            write_to = sys.stderr
+        t = time.process_time() - start_time
+        write_to.write(
+            f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!\n'
+        )
+    sys.exit(total_num_warnings > 0)
+
+
 def main(**kwargs) -> None:
     """
     This function applies all rules in this module to the files specified by
@@ -1884,8 +1889,10 @@ def main(**kwargs) -> None:
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
     """
-    global _SILENT, _VERBOSE, _GLOB_CONFIG
+
     start_time = time.process_time()
+    total_num_warnings = 0
+
     if __debug__:
         _info_verbose("Debug on . . .")
     else:
@@ -1893,6 +1900,7 @@ def main(**kwargs) -> None:
 
     # gather args from different places
     cmd_line_args = _parse_cmd_line_args(kwargs)
+    kwargs = _parse_kwargs(kwargs)
     config_yml_fname, yml_dic = _parse_yml_config()
 
     # check the arg types and values, don't need to check cmd_line_args because
@@ -1901,8 +1909,7 @@ def main(**kwargs) -> None:
     kwargs = __normalize_args(kwargs, "(keyword argument)")
     yml_dic = __normalize_args(yml_dic, f"({config_yml_fname})")
 
-    args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
-    __init_rules(args)
+    __init_rules()
 
     # The next lines has to come after __init_rules because we need to know what
     # all of the rules are before we can check if we're given any bad ones.
@@ -1913,24 +1920,13 @@ def main(**kwargs) -> None:
     yml_dic = __normalize_disabled_rules(yml_dic, f"({config_yml_fname})")
 
     args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
-
-    # TOD init_globals
-    _SILENT = args["silent"]
-    _VERBOSE = args["verbose"]
-    _GLOB_CONFIG = args
+    args = __normalize_files(args)
+    __init_globals(args)
 
     if len(args["files"]) == 0:
-        return
-    print(args)
+        __at_exit(args, total_num_warnings, start_time)
 
-    # TODO initialise suppressions dicts
-    __init_config_and_suppressions_yml()
-    __init_config_and_suppressions_command_line(args)
-    __init_file_and_line_suppressions(args)
-
-    total_nr_warnings = 0
-    max_warnings = _GLOB_CONFIG["max_warnings"]
-    global_rules = _FILE_RULES[2]
+    max_warnings = args["max-warnings"]
 
     def too_many_warnings(nr_warnings):
         if nr_warnings >= max_warnings:
@@ -1938,8 +1934,8 @@ def main(**kwargs) -> None:
                 sys.stderr.write(f"Total errors found: {nr_warnings}\n")
             sys.exit("Too many warnings, giving up!")
 
-    for i, fname in enumerate(args.files):
-        _verbose_msg_per_file(args, fname, i)
+    for i, fname in enumerate(args["files"]):
+        __verbose_msg_per_file(args, fname, i)
         try:
             with open(fname, "r", encoding="utf-8") as ffile:
                 lines = ffile.read()
@@ -1951,7 +1947,7 @@ def main(**kwargs) -> None:
         for rule in _FILE_RULES:
             if not _is_rule_suppressed(fname, 0, rule):
                 nr_warnings, lines = rule(fname, lines, nr_warnings)
-                too_many_warnings(nr_warnings + total_nr_warnings)
+                too_many_warnings(nr_warnings + total_num_warnings)
         lines = lines.split("\n")
         for linenum in range(len(lines)):
             for rule in _LINE_RULES:
@@ -1959,21 +1955,12 @@ def main(**kwargs) -> None:
                     nr_warnings, lines = rule(
                         fname, lines, linenum, nr_warnings
                     )
-        too_many_warnings(nr_warnings + total_nr_warnings)
+        too_many_warnings(nr_warnings + total_num_warnings)
         for rule in _LINE_RULES:
             rule.reset()
-        total_nr_warnings += nr_warnings
+        total_num_warnings += nr_warnings
 
-    if not _SILENT:
-        if total_nr_warnings == 0:
-            write_to = sys.stdout
-        else:
-            write_to = sys.stderr
-        t = time.process_time() - start_time
-        write_to.write(
-            f"Analysed {len(args.files)} files in {t:.2f}s, found {total_nr_warnings} errors!\n"
-        )
-    sys.exit(total_nr_warnings > 0)
+    __at_exit(args, total_num_warnings, start_time)
 
 
 if __name__ == "__main__":

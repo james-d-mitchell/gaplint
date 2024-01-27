@@ -54,7 +54,9 @@ class TestScript(unittest.TestCase):
         self.assertEqual(cm.exception.code, 0)
 
     def test_wrong_ext(self):
-        run_gaplint(files=["tests/file.wrongext"], silent=True)
+        with self.assertRaises(SystemExit) as cm:
+            run_gaplint(files=["tests/file.wrongext"], silent=True)
+        self.assertEqual(cm.exception.code, 0)
 
     def test_info_action(self):
         with self.assertRaises(AssertionError):
@@ -164,7 +166,8 @@ class TestRules(unittest.TestCase):
             run_gaplint()
         with self.assertRaises(SystemExit):
             run_gaplint(files=["tests/test1.g"], max_warnings=0)
-        run_gaplint(files=["non-existant-file"])
+        with self.assertRaises(SystemExit):
+            run_gaplint(files=["non-existant-file"])
         with self.assertRaises(SystemExit):
             run_gaplint(files=["tests/test1.g"], verbose=True)
 
