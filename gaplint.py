@@ -1254,9 +1254,6 @@ def __merge_args(
 
     args = deepcopy(cmd_line_args)
     for key, val in args.items():
-        if key == "enable":
-            # handled at end
-            continue
         if val is None:
             if kwargs[key] is not None:
                 args[key] = kwargs[key]
@@ -1323,9 +1320,11 @@ def __normalize_disabled_rules(
 
     # Special case for AnalyseLVars.SubRules since they are covered by two
     # codes W000 and the subrule code.
-    if any(x.code in enabled for x in AnalyseLVars.SubRules.values()):
-        if "W000" in args["disable"]:
-            args["disable"].remove("W000")
+    if (
+        any(x.code in enabled for x in AnalyseLVars.SubRules.values())
+        and "W000" in args["disable"]
+    ):
+        args["disable"].remove("W000")
     return args
 
     # global _SILENT, _VERSBOSE, _GLOB_CONFIG, _GLOB_SUPPRESSIONS, _FILE_SUPPRESSIONS, _LINE_SUPPRESSIONS
@@ -1443,7 +1442,8 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
 
 
 def __init_rules(args: Dict[str, Any]) -> None:
-    global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
+    global _FILE_RULES, _LINE_RULES, _GLOB_CONFIG  # pylint: disable=global-statement
+    _GLOB_CONFIG = args
     if len(_FILE_RULES) != 0:
         return
         # WarnRegexFile(
@@ -1901,12 +1901,16 @@ def main(**kwargs) -> None:
     kwargs = __normalize_args(kwargs, "(keyword argument)")
     yml_dic = __normalize_args(yml_dic, f"({config_yml_fname})")
 
+    args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
     __init_rules(args)
+
     # The next lines has to come after __init_rules because we need to know what
     # all of the rules are before we can check if we're given any bad ones.
-    __normalize_disabled_rules(cmd_line_args, "(command line argument)")
-    __normalize_disabled_rules(kwargs, "(keyword argument)")
-    __normalize_disabled_rules(yml_dic, f"({config_yml_fname})")
+    cmd_line_args = __normalize_disabled_rules(
+        cmd_line_args, "(command line argument)"
+    )
+    kwargs = __normalize_disabled_rules(kwargs, "(keyword argument)")
+    yml_dic = __normalize_disabled_rules(yml_dic, f"({config_yml_fname})")
 
     args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
 
