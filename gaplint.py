@@ -1316,6 +1316,8 @@ def __normalize_disabled_rules(
                 codes.add(Rule.to_code(code_or_name))
         return codes
 
+    # TODO don't allow both disable and enabled to be given, if they are then
+    # use enabled
     if args["disable"] is None and args["enable"] is None:
         return args
 
@@ -1937,6 +1939,10 @@ def main(**kwargs) -> None:  # pylint: disable=too-many-locals
             if not _SILENT:
                 sys.stderr.write(f"Total errors found: {nr_warnings}\n")
             sys.exit("Too many warnings, giving up!")
+
+    _info_action(
+        f"{len(args['disable'])} / {len(Rule.all_codes)} rules disabled"
+    )
 
     for i, fname in enumerate(args["files"]):
         __verbose_msg_per_file(args, fname, i)
