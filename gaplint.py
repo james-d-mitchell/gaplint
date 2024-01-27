@@ -197,6 +197,7 @@ class Rule:
             return Rule.all_names[name_or_code]
         return name_or_code
 
+    # TODO remove default args and don't allow None as code or name
     def __init__(self, name: Optional[str] = None, code: Optional[str] = None):
         assert isinstance(name, str) or (name is None and code is None)
         assert isinstance(code, str) or (name is None and code is None)
@@ -1237,6 +1238,7 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
     return args
 
 
+# TODO return from where disable+enable comes
 def __merge_args(
     cmd_line_args: Dict[str, Any],
     kwargs: Dict[str, Any],
@@ -1271,6 +1273,8 @@ def __merge_args(
 
     args = deepcopy(cmd_line_args)
     for key, val in args.items():
+        if key in ("enable", "disable"):
+            continue
         if val is None:
             if kwargs[key] is not None:
                 args[key] = kwargs[key]
@@ -1300,6 +1304,17 @@ def __merge_args(
                     yml_dic[key],
                     config_yml_fname,
                 )
+        e, d = "enable", "disable"
+        if cmd_line_args[e] is not None or cmd_line_args[d] is not None:
+            args[e], args[d] = cmd_line_args[e], cmd_line_args[d]
+        elif kwargs[e] is not None or kwargs[d] is not None:
+            args[e], args[d] = kwargs[e], kwargs[d]
+        elif yml_dic[e] is not None or yml_dic[d] is not None:
+            args[e], args[d] = yml_dic[e], yml_dic[d]
+        else:
+            args[e], args[d] = None, _DEFAULT_CONFIG[d]
+        # TODO conflict message for enable, disable
+
     return args
 
 
@@ -1316,11 +1331,17 @@ def __normalize_disabled_rules(
                 codes.add(Rule.to_code(code_or_name))
         return codes
 
-    # TODO don't allow both disable and enabled to be given, if they are then
-    # use enabled
     if args["disable"] is None and args["enable"] is None:
         return args
+    if args["disable"] is not None and args["enable"] is not None:
+        sys.stderr.write(
+            f"ERROR: found both configuration values "
+            f"'enable' and 'disable' {where}, use one or the other, "
+            + "not both\n"
+        )
+        sys.exit(1)
 
+    # TODO clean up from here
     if args["disable"] is None:
         disabled = set()
     else:
@@ -1940,9 +1961,9 @@ def main(**kwargs) -> None:  # pylint: disable=too-many-locals
                 sys.stderr.write(f"Total errors found: {nr_warnings}\n")
             sys.exit("Too many warnings, giving up!")
 
-    _info_action(
-        f"{len(args['disable'])} / {len(Rule.all_codes)} rules disabled"
-    )
+    n = len(Rule.all_codes)
+    m = len(args["disable"])
+    sys.stdout.write(f"{n - m} / {n} rules enabled!\n")
 
     for i, fname in enumerate(args["files"]):
         __verbose_msg_per_file(args, fname, i)
