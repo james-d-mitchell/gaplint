@@ -504,6 +504,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         "W050": Rule("use-return-false-alt", "W050"),
         "W051": Rule("use-return-fail-alt", "W051"),
         "W052": Rule("use-return-first-alt", "W052"),
+        "W053": Rule("use-id-func", "W053"),
     }
 
     def __init__(
@@ -691,7 +692,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 and not _is_rule_suppressed(
                     fname, linenum + 1, AnalyseLVars.SubRules[code]
                 )
-                and re.search(rf"\breturn\b\s+\b{bval}\b", line)
+                and re.search(rf"^\s*\breturn\b\s+\b{bval}\b", line)
             ):
                 _warn(
                     self.SubRules[code],
@@ -701,18 +702,33 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 )
                 nr_warnings += 1
         if (
-            len(func_args_all) != 0
+            len(func_args_all) > 1
             and not _is_rule_suppressed(fname, linenum + 1, self)
             and not _is_rule_suppressed(
-                fname, linenum + 1, AnalyseLVars.SubRules["W051"]
+                fname, linenum + 1, AnalyseLVars.SubRules["W052"]
             )
-            and re.search(rf"\breturn\b\s+\b{func_args_all[0]}\s*;", line)
+            and re.search(rf"^\s*\breturn\b\s+\b{func_args_all[0]}\s*;", line)
         ):
             _warn(
                 self.SubRules["W052"],
                 fname,
                 linenum,
                 "Replace function(x, y) return x; end; by ReturnFirst",
+            )
+            nr_warnings += 1
+        if (
+            len(func_args_all) == 1
+            and not _is_rule_suppressed(fname, linenum + 1, self)
+            and not _is_rule_suppressed(
+                fname, linenum + 1, AnalyseLVars.SubRules["W053"]
+            )
+            and re.search(rf"^\s*return\b\s+\b{func_args_all[0]}\s*;", line)
+        ):
+            _warn(
+                self.SubRules["W053"],
+                fname,
+                linenum,
+                'Replace "function(x) return x; end;" by IdFunc',
             )
             nr_warnings += 1
         return nr_warnings
@@ -1499,7 +1515,13 @@ def __init_rules() -> None:
             "if-then-return-true-else-return-false",
             "W046",
             r"\bif\b.*?\bthen\b\n?\s*return\s*true;\n?\s*else\s*\n?\s*return\s*false;\n?\s*fi;",
-            'Replace "if X then return true; else return false;" by "X"',
+            'Replace "if X then return true; else return false;" by "return X;"',
+        ),
+        WarnRegexFile(
+            "if-then-return-false-else-return-true",
+            "W054",
+            r"\bif\b.*?\bthen\b\n?\s*return\s*false;\n?\s*else\s*\n?\s*return\s*true;\n?\s*fi;",
+            'Replace "if X then return false; else return true;" by "return not X;"',
         ),
     ]
     _LINE_RULES = [
@@ -1885,13 +1907,9 @@ def __at_exit(
     args: Dict[str, Any], total_num_warnings: int, start_time: float
 ) -> None:
     if not _SILENT:
-        if total_num_warnings == 0:
-            write_to = sys.stdout
-        else:
-            write_to = sys.stderr
         t = time.process_time() - start_time
-        write_to.write(
-            f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!\n'
+        _info_action(
+            f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!'
         )
     sys.exit(total_num_warnings > 0)
 
@@ -1961,9 +1979,11 @@ def main(**kwargs) -> None:  # pylint: disable=too-many-locals
                 sys.stderr.write(f"Total errors found: {nr_warnings}\n")
             sys.exit("Too many warnings, giving up!")
 
-    n = len(Rule.all_codes)
+    n = len(Rule.all_suppressible_codes())
     m = len(args["disable"])
-    sys.stdout.write(f"{n - m} / {n} rules enabled!\n")
+    _info_action(
+        f"Analysing {len(args['files'])} files with {n - m} / {n} rules!"
+    )
 
     for i, fname in enumerate(args["files"]):
         __verbose_msg_per_file(args, fname, i)
