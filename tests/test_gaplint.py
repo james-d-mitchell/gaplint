@@ -41,13 +41,25 @@ def test_disable_global_rule():
             # Disable all rules except analyse-lvars
             enable="W000",
         )
-    assert excinfo.value.code == 0
+    assert excinfo.value.code == 1
+
+
+def test_hpc_gap():
+    with pytest.raises(SystemExit) as excinfo:
+        run_gaplint(files=["tests/filter.gi"])
+
+    assert excinfo.value.code == 1
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_gaplint(files=["tests/filter.gi"], max_warnings=2, silent=False)
+
+    assert excinfo.value.code == 1
 
 
 def test_wrong_ext():
     with pytest.raises(SystemExit) as excinfo:
         run_gaplint(files=["tests/file.wrongext"], silent=True)
-    assert excinfo.value.code == 0
+    assert excinfo.value.code == 1
 
 
 def test_info_action():
@@ -119,8 +131,9 @@ def test_run_gaplint():
         run_gaplint()
     with pytest.raises(SystemExit):
         run_gaplint(files=["tests/test1.g"], max_warnings=0)
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         run_gaplint(files=["non-existant-file"])
+    assert e.value.code == 1
     with pytest.raises(SystemExit):
         run_gaplint(files=["tests/test1.g"], verbose=True)
 
@@ -220,3 +233,19 @@ def test_empty_yaml():
     with pytest.raises(SystemExit):
         run_gaplint(files=["tests/test4.g"], silent=True)
     rm_config_yaml_file()
+
+
+def test_enable_and_disable():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], enable="", disable="")
+    assert e.value.code == 1
+    # TODO should fail but doesn't
+    # with pytest.raises(SystemExit) as e:
+    #     run_gaplint(files=["test1.g"], enable=None, disable=None)
+    # assert e.value.code == 1
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], enable="W047")
+    assert e.value.code == 1
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], max_warnings=1)
+    assert e.value.code == 1

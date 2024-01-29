@@ -149,7 +149,8 @@ def _warn(rule, fname: str, linenum: int, msg: str) -> None:
 
 def _error(rule, fname: str, linenum: int, msg: str) -> None:
     _warn_or_error(rule, fname, linenum, msg)
-    sys.exit("Aborting!")
+    sys.stderr.write("Aborting!\n")
+    sys.exit(1)
 
 
 def _info_action(msg: str) -> None:
@@ -1087,7 +1088,8 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
     we can detect where a parameter was actually set in __merge_args. The
     actual default value is installed in __merge_args.
     """
-    if __name__ != "__main__":
+    script_name = os.path.basename(sys.argv[0])
+    if script_name in ["pytest", "py.test"]:
         return {}
     parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
     if "files" not in kwargs:
@@ -1213,6 +1215,9 @@ def _parse_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
         kwargs["disable"] = set(kwargs["disable"].split(","))
     if "enable" in kwargs and isinstance(kwargs["enable"], str):
         kwargs["enable"] = set(kwargs["enable"].split(","))
+    if "max_warnings" in kwargs:
+        kwargs["max-warnings"] = kwargs["max_warnings"]
+        del kwargs["max_warnings"]
     return kwargs
 
 
@@ -1350,8 +1355,7 @@ def __normalize_disabled_rules(
                 codes.add(Rule.to_code(code_or_name))
         return codes
 
-    if args["disable"] is None and args["enable"] is None:
-        return args
+    assert args["disable"] is not None or args["enable"] is not None
     if args["disable"] is not None and args["enable"] is not None:
         sys.stderr.write(
             f"ERROR: found both configuration values "
@@ -1391,8 +1395,10 @@ def __normalize_files(args: Dict[str, Any]):
     valid_extensions = set(["g", "g.txt", "gi", "gd", "gap", "tst", "xml"])
     files = []
     for fname in args["files"]:
-        if not (exists(fname) and isfile(fname)):
-            _info_action(f"SKIPPING {fname}: cannot open for reading")
+        if not exists(fname):
+            _info_action(f"SKIPPING {fname}: file does not exist!")
+        elif not isfile(fname):
+            _info_action(f"SKIPPING {fname}: not a file!")
         elif (
             fname.split(".")[-1] not in valid_extensions
             and ".".join(fname.split(".")[-2:]) not in valid_extensions
@@ -1412,12 +1418,17 @@ def __normalize_files(args: Dict[str, Any]):
 def __init_globals(
     args: Dict[str, Any],
 ) -> None:
-    global _SILENT, _VERBOSE, _GLOB_CONFIG  # pylint: disable=global-statement
+    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS  # pylint: disable=global-statement
 
     # init global config values
     _SILENT = args["silent"]
     _VERBOSE = args["verbose"]
     _GLOB_CONFIG = args
+    # Clear the suppressions in case we are running as a module (i.e. in the
+    # tests)
+    _GLOB_SUPPRESSIONS.clear()
+    _LINE_SUPPRESSIONS = {}
+    _FILE_SUPPRESSIONS = {}
 
     # init suppressions
     for code in args["disable"]:
@@ -1960,7 +1971,8 @@ def main(**kwargs) -> None:  # pylint: disable=too-many-locals
     __init_globals(args)
 
     if len(args["files"]) == 0:
-        __at_exit(args, total_num_warnings, start_time)
+        # Return 1 warning so that the exit code is correct
+        __at_exit(args, 1, start_time)
 
     max_warnings = args["max-warnings"]
 
