@@ -8,8 +8,9 @@ from gaplint import main as run_gaplint
 
 
 def test_dot_g_file1():
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         run_gaplint(files=["tests/test1.g"], silent=False)
+    assert e.value.code == 1
 
 
 def test_dot_g_file2():
