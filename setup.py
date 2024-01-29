@@ -13,10 +13,7 @@ with open("README.rst", "r", encoding="utf8") as f:
         license="GPL3",
         author="James D. Mitchell, Simon Tollman",
         author_email="jdm3@st-andrews.ac.uk, skt4@st-andrews.ac.uk",
-        description=(
-            "A rudimentary linter for GAP "
-            + "(https://www.gap-system.org/) code."
-        ),
+        description=("A linter for GAP (https://www.gap-system.org/)."),
         long_description=f.read(),
         packages=find_packages(exclude=["tests"]),
         include_package_data=True,

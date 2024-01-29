@@ -197,10 +197,9 @@ class Rule:
             return Rule.all_names[name_or_code]
         return name_or_code
 
-    # TODO remove default args and don't allow None as code or name
-    def __init__(self, name: Optional[str] = None, code: Optional[str] = None):
-        assert isinstance(name, str) or (name is None and code is None)
-        assert isinstance(code, str) or (name is None and code is None)
+    def __init__(self, name: str, code: str):
+        assert isinstance(name, str)
+        assert isinstance(code, str)
         if __debug__:
             if code is not None and code in Rule.all_codes:
                 raise ValueError(f"Duplicate rule code {code}")
@@ -1088,6 +1087,8 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
     we can detect where a parameter was actually set in __merge_args. The
     actual default value is installed in __merge_args.
     """
+    if __name__ != "__main__":
+        return {}
     parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
     if "files" not in kwargs:
         parser.add_argument("files", nargs="+", help="the files to lint")
@@ -1210,6 +1211,8 @@ def _parse_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     # TODO check all the args
     if "disable" in kwargs and isinstance(kwargs["disable"], str):
         kwargs["disable"] = set(kwargs["disable"].split(","))
+    if "enable" in kwargs and isinstance(kwargs["enable"], str):
+        kwargs["enable"] = set(kwargs["enable"].split(","))
     return kwargs
 
 
@@ -1776,11 +1779,12 @@ def __add_file_suppressions(
     for name_or_code in names_or_codes:
         assert isinstance(name_or_code, str)
         if __can_disable_rule_name_or_code(
-            name_or_code, f"at {fname}:{linenum}"
+            name_or_code, f"at {fname}:{linenum + 1}"
         ):
             if fname not in _FILE_SUPPRESSIONS:
                 _FILE_SUPPRESSIONS[fname] = {}
-            _FILE_SUPPRESSIONS[fname][name_or_code] = None
+            code = Rule.to_code(name_or_code)
+            _FILE_SUPPRESSIONS[fname][code] = None
 
 
 def __add_line_suppressions(
@@ -1800,7 +1804,8 @@ def __add_line_suppressions(
                 _LINE_SUPPRESSIONS[fname] = {}
             if linenum + 1 not in _LINE_SUPPRESSIONS[fname]:
                 _LINE_SUPPRESSIONS[fname][linenum + 1] = {}
-            _LINE_SUPPRESSIONS[fname][linenum + 1][name_or_code] = None
+            code = Rule.to_code(name_or_code)
+            _LINE_SUPPRESSIONS[fname][linenum + 1][code] = None
 
 
 # TODO this should be a line rule called before any other line rule, to avoid
@@ -1854,34 +1859,20 @@ def _is_rule_suppressed(fname: str, linenum: int, rule: Rule) -> bool:
     assert isinstance(linenum, int)
     assert isinstance(rule, Rule)
 
-    assert rule.code is not None
-    assert rule.name is not None
     if rule.code[0] == "M":
         return False
-    if (
-        "all" in _GLOB_SUPPRESSIONS
-        or rule.code in _GLOB_SUPPRESSIONS
-        # TODO remove name from this
-        or rule.name in _GLOB_SUPPRESSIONS
-    ):
+    if "all" in _GLOB_SUPPRESSIONS or rule.code in _GLOB_SUPPRESSIONS:
         return True
     if fname in _FILE_SUPPRESSIONS and (
         "all" in _FILE_SUPPRESSIONS[fname]
         or rule.code in _FILE_SUPPRESSIONS[fname]
-        # TODO remove name from this
-        or rule.name in _FILE_SUPPRESSIONS[fname]
     ):
         return True
 
     if (
         fname in _LINE_SUPPRESSIONS
         and linenum in _LINE_SUPPRESSIONS[fname]
-        and (
-            rule.code in _LINE_SUPPRESSIONS[fname][linenum]
-            # TODO remove name from this, since now all suppressions are done via
-            # codes
-            or rule.name in _LINE_SUPPRESSIONS[fname][linenum]
-        )
+        and (rule.code in _LINE_SUPPRESSIONS[fname][linenum])
     ):
         return True
     return False
@@ -1911,7 +1902,7 @@ def __at_exit(
         _info_action(
             f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!'
         )
-    sys.exit(total_num_warnings > 0)
+    sys.exit(1 if total_num_warnings > 0 else 0)
 
 
 def main(**kwargs) -> None:  # pylint: disable=too-many-locals
@@ -1977,7 +1968,8 @@ def main(**kwargs) -> None:  # pylint: disable=too-many-locals
         if nr_warnings >= max_warnings:
             if not _SILENT:
                 sys.stderr.write(f"Total errors found: {nr_warnings}\n")
-            sys.exit("Too many warnings, giving up!")
+                sys.stderr.write("Too many warnings, giving up!\n")
+            __at_exit(args, nr_warnings, start_time)
 
     n = len(Rule.all_suppressible_codes())
     m = len(args["disable"])
