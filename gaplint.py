@@ -12,11 +12,10 @@ import re
 import sys
 import time
 from copy import deepcopy
-from typing import Callable, Tuple, List, Dict, Union, Optional, Set, Any
-
-from os import listdir
-from os.path import isdir, exists, isfile, abspath, join
 from importlib.metadata import version
+from os import listdir
+from os.path import abspath, exists, isdir, isfile, join
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import yaml
 
