@@ -8,40 +8,169 @@ from gaplint import main as run_gaplint
 
 
 def test_dot_g_file1():
+    expected = {
+        "W000": 3,
+        "W001": 1,
+        "W002": 1,
+        "W003": 1,
+        "W004": 3,
+        "W005": 12,
+        "W006": 0,
+        "W007": 2,
+        "W008": 5,
+        "W009": 17,
+        "W010": 1,
+        "W011": 0,
+        "W012": 1,
+        "W013": 0,
+        "W014": 2,
+        "W015": 0,
+        "W016": 2,
+        "W017": 0,
+        "W018": 1,
+        "W019": 4,
+        "W020": 2,
+        "W021": 0,
+        "W022": 1,
+        "W023": 0,
+        "W024": 0,
+        "W025": 0,
+        "W026": 0,
+        "W027": 0,
+        "W028": 0,
+        "W029": 0,
+        "W030": 1,
+        "W031": 1,
+        "W032": 1,
+        "W033": 0,
+        "W034": 1,
+        "W035": 0,
+        "W036": 0,
+        "W037": 0,
+        "W038": 0,
+        "W039": 0,
+        "W040": 0,
+        "W041": 0,
+        "W042": 0,
+        "W043": 0,
+        "W044": 0,
+        "W045": 0,
+        "W046": 0,
+        "W047": 6,
+        "W048": 4,
+        "W049": 3,
+        "W050": 3,
+        "W051": 3,
+        "W052": 3,
+        "W053": 3,
+        "W054": 0,
+    }
+
     with pytest.raises(SystemExit) as e:
-        run_gaplint(files=["tests/test1.g"], silent=False)
-    assert e.value.code == 1
+        run_gaplint(files=["tests/test1.g"])
+    assert e.value.code == 66
+    for code in gaplint.Rule.all_suppressible_codes():
+        with pytest.raises(SystemExit) as e:
+            run_gaplint(files=["tests/test1.g"], enable=code)
+        assert (expected[code], code) == (e.value.code, code)
 
 
 def test_dot_g_file2():
-    with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test2.g"], silent=True)
+    expected = {
+        "W000": 0,
+        "W001": 0,
+        "W002": 0,
+        "W003": 0,
+        "W004": 8,
+        "W005": 0,
+        "W006": 0,
+        "W007": 0,
+        "W008": 0,
+        "W009": 0,
+        "W010": 0,
+        "W011": 0,
+        "W012": 30,
+        "W013": 30,
+        "W014": 0,
+        "W015": 0,
+        "W016": 48,
+        "W017": 0,
+        "W018": 0,
+        "W019": 0,
+        "W020": 6,
+        "W021": 0,
+        "W022": 5,
+        "W023": 0,
+        "W024": 0,
+        "W025": 0,
+        "W026": 0,
+        "W027": 0,
+        "W028": 0,
+        "W029": 0,
+        "W030": 0,
+        "W031": 0,
+        "W032": 0,
+        "W033": 0,
+        "W034": 0,
+        "W035": 0,
+        "W036": 0,
+        "W037": 0,
+        "W038": 0,
+        "W039": 0,
+        "W040": 0,
+        "W041": 0,
+        "W042": 0,
+        "W043": 0,
+        "W044": 0,
+        "W045": 0,
+        "W046": 0,
+        "W047": 0,
+        "W048": 0,
+        "W049": 0,
+        "W050": 0,
+        "W051": 0,
+        "W052": 0,
+        "W053": 0,
+        "W054": 0,
+    }
+
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/test2.g"])
+    assert e.value.code == 127
+    for code in gaplint.Rule.all_suppressible_codes():
+        with pytest.raises(SystemExit) as e:
+            run_gaplint(files=["tests/test2.g"], enable=code)
+        assert (expected[code], code) == (e.value.code, code)
 
 
 def test_dot_g_file3():
-    with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test3.g"], silent=True)
+    # syntax error
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/test3.g"])
+    assert e.value.code == 1
 
 
 def test_dot_g_file4():
-    with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test1.g"], silent=True, disable="all")
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/test1.g"], disable="all")
+    assert e.value.code == 0
 
 
 def test_dot_tst_file():
-    with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test.tst"], silent=True)
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/test.tst"])
+    assert e.value.code == 2
 
 
 def test_disable_global_rule():
-    with pytest.raises(SystemExit) as excinfo:
+    with pytest.raises(SystemExit) as e:
         run_gaplint(
             files=["tests/methsel2.g"],
             silent=True,
             # Disable all rules except analyse-lvars
             enable="W000",
         )
-    assert excinfo.value.code == 1
+    assert e.value.code == 0
 
 
 def test_hpc_gap():
@@ -51,35 +180,21 @@ def test_hpc_gap():
     assert excinfo.value.code == 1
 
     with pytest.raises(SystemExit) as excinfo:
-        run_gaplint(files=["tests/filter.gi"], max_warnings=2, silent=False)
+        run_gaplint(files=["tests/filter.gi"], max_warnings=2)
 
     assert excinfo.value.code == 1
 
 
 def test_wrong_ext():
     with pytest.raises(SystemExit) as excinfo:
-        run_gaplint(files=["tests/file.wrongext"], silent=True)
+        run_gaplint(files=["tests/file.wrongext"])
     assert excinfo.value.code == 1
 
 
-def test_info_action():
-    with pytest.raises(AssertionError):
-        gaplint._SILENT = False
-        gaplint._info_action(0)
-        gaplint._SILENT = False
-    gaplint._info_action("test")
-
-
-def test_info_verbose():
-    gaplint._SILENT, gaplint._VERBOSE = False, True
-    with pytest.raises(TypeError):
-        gaplint._info_verbose("test/tests.g", 0, "msg")
-    gaplint._info_verbose("message")
-
-
 def test_autodoc_whitespace():
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         run_gaplint(files=["tests/test5.g"])
+    assert e.value.code == 1
 
 
 def test_ReplaceOutputTstOrXMLFile():
@@ -179,28 +294,28 @@ def rm_config_yaml_file():
 def test_with_config_file_root_dir():
     write_config_yaml_file()
     with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test1.g"], silent=True)
+        run_gaplint(files=["tests/test1.g"])
     rm_config_yaml_file()
 
 
 def test_with_bad_config_file_1():
     write_config_yaml_file(BAD_CONFIG_YAML_FILE_1)
     with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test1.g"], silent=True)
+        run_gaplint(files=["tests/test1.g"])
     rm_config_yaml_file()
 
 
 def test_with_bad_config_file_2():
     write_config_yaml_file(BAD_CONFIG_YAML_FILE_2)
     with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test1.g"], silent=True)
+        run_gaplint(files=["tests/test1.g"])
     rm_config_yaml_file()
 
 
 def test_with_bad_config_file_3():
     write_config_yaml_file(BAD_CONFIG_YAML_FILE_3)
     with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test1.g"], silent=True)
+        run_gaplint(files=["tests/test1.g"])
     rm_config_yaml_file()
 
 
@@ -208,7 +323,7 @@ def test_with_config_file_parent_top_dir():
     write_config_yaml_file()
     os.chdir("tests")
     with pytest.raises(SystemExit):
-        run_gaplint(files=["test1.g"], silent=True)
+        run_gaplint(files=["test1.g"])
     os.chdir("..")
     rm_config_yaml_file()
 
@@ -217,7 +332,7 @@ def test_with_config_file_parent_root():
     os.rename(".git", ".tmp_git")
     try:
         with pytest.raises(SystemExit):
-            run_gaplint(files=["test1.g"], silent=True)
+            run_gaplint(files=["test1.g"])
     except Exception:
         pass
     os.rename(".tmp_git", ".git")
@@ -225,13 +340,13 @@ def test_with_config_file_parent_root():
 
 def test_disable_all_file_suppressions():
     with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test4.g"], silent=True)
+        run_gaplint(files=["tests/test4.g"])
 
 
 def test_empty_yaml():
     write_config_yaml_file(EMPTY_YAML_FILE)
     with pytest.raises(SystemExit):
-        run_gaplint(files=["tests/test4.g"], silent=True)
+        run_gaplint(files=["tests/test4.g"])
     rm_config_yaml_file()
 
 

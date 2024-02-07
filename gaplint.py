@@ -1831,7 +1831,7 @@ def __init_file_and_line_suppressions(args: Dict[str, Any]) -> None:
 
     for fname in args["files"]:
         try:
-            with open(fname, "r", encoding="utf8") as f:
+            with open(fname, "r", encoding="utf-8") as f:
                 lines = f.readlines()
         except IOError:
             _info_action(f"IGNORING unreadable file {fname}!")
@@ -1913,7 +1913,7 @@ def __at_exit(
         _info_action(
             f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!'
         )
-    sys.exit(1 if total_num_warnings > 0 else 0)
+    sys.exit(total_num_warnings)
 
 
 def main(**kwargs) -> None:  # pylint: disable=too-many-locals
