@@ -1613,7 +1613,7 @@ def __init_rules() -> None:
         WarnRegexLine(
             "keyword-function",
             "W015",
-            r"(\s|^)function[^\(]",
+            r"\bfunction\b[^\(]",
             "Keyword 'function' not followed by (",
         ),
         WarnRegexLine(
