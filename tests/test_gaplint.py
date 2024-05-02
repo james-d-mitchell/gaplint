@@ -4,6 +4,8 @@ import unittest
 import sys
 import os
 
+from os.path import exists, isdir
+
 import gaplint
 from gaplint import main as run_gaplint
 
@@ -237,13 +239,15 @@ class TestConfigYAMLFile(unittest.TestCase):
         self.rm_config_yaml_file()
 
     def test_with_config_file_parent_root(self):
-        os.rename(".git", ".tmp_git")
+        if exists(".git") and isdir(".git"):
+            os.rename(".git", ".tmp_git")
         try:
             with self.assertRaises(SystemExit):
                 run_gaplint(files=["test1.g"], silent=True)
         except Exception:
             pass
-        os.rename(".tmp_git", ".git")
+        if exists(".tmp_git") and isdir(".tmp_git"):
+            os.rename(".tmp_git", ".git")
 
     def test_disable_all_file_suppressions(self):
         with self.assertRaises(SystemExit):
