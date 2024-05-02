@@ -198,6 +198,8 @@ class Rule:
         return name_or_code
 
     def __init__(self, name: str, code: str):
+        # TODO remove stuff about code/name being None, since we are not using
+        # that anymore
         assert isinstance(name, str)
         assert isinstance(code, str)
         if __debug__:
@@ -228,6 +230,7 @@ class WarnRegexBase(Rule):
     exceptions is also matched.
     """
 
+    # TODO use keyword args
     def __init__(  # pylint: disable=too-many-arguments, dangerous-default-value
         self,
         name: str,
@@ -290,6 +293,7 @@ class ReplaceAnnoyUTF8Chars(Rule):
     currently does not.
     """
 
+    # TODO remove the Optional[str] = None here
     def __init__(
         self, name: Optional[str] = None, code: Optional[str] = None
     ) -> None:
@@ -461,6 +465,7 @@ class ReplaceOutputTstOrXMLFile(Rule):
     '@''s.
     """
 
+    # TODO remove the Optional[str] = None here
     def __init__(
         self, name: Optional[str] = None, code: Optional[str] = None
     ) -> None:
@@ -481,10 +486,14 @@ class ReplaceOutputTstOrXMLFile(Rule):
             for sol in self._sol_p.finditer(lines):
                 # Replace everything except '\n' with '@'
                 out += re.sub(self._rep_p, "@", lines[eol : sol.start() + 1])
+                # FIXME check if search returns None, if so, then I guess do
+                # nothing?
                 eol = self._eol_p.search(lines, sol.end()).end()
                 out += lines[sol.end() : eol]
                 while eol + 1 < len(lines) and lines[eol] == ">":
                     start = eol + 2
+                    # FIXME check if search returns None, if so, then I guess do
+                    # nothing?
                     eol = self._eol_p.search(lines, start).end()
                     out += lines[start:eol]
             return nr_warnings, out
@@ -509,6 +518,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     def __init__(
         self, name: Optional[str] = None, code: Optional[str] = None
     ) -> None:
+        # TODO remove Optional[str] = None here
         Rule.__init__(self, name, code)
         self.reset()
 
@@ -673,6 +683,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                     self._func_position.append(f"{fname}:{linenum + 1}")
         return nr_warnings
 
+    # TODO use keyword args?
     def _check_for_return_fail_etc(  # pylint: disable=too-many-arguments
         self, func_body, func_args_all, fname, linenum, nr_warnings
     ):
@@ -890,6 +901,7 @@ class LineTooLong(Rule):
     def __init__(
         self, name: Optional[str] = None, code: Optional[str] = None
     ) -> None:
+        # TODO remove Optional[str] = None
         Rule.__init__(self, name, code)
 
     def __call__(
@@ -960,6 +972,7 @@ class UnalignedPatterns(Rule):
     aligned.
     """
 
+    # TODO use keyword args?
     def __init__(  # pylint: disable=too-many-arguments
         self, name: str, code: str, pattern: str, group: int, msg: str
     ) -> None:
@@ -1009,8 +1022,8 @@ class Indentation(Rule):
         self._expected = 0
         self._indent = re.compile(r"^(\s*)\S")
         self._blank = re.compile(r"^\s*$")
-        self._before = None
-        self._after = None
+        self._before = None  # TODO change to empty list to fix warnings below
+        self._after = None  # TODO same a prev. line
         self._msg = "Bad indentation: found %d but expected at least %d"
 
     # Really initialize outside __init__ because rules are instanstiated
@@ -1262,6 +1275,7 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
 
 
 # TODO return from where disable+enable comes
+# TODO fix too many branches
 def __merge_args(
     cmd_line_args: Dict[str, Any],
     kwargs: Dict[str, Any],
@@ -1488,7 +1502,7 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
 def __init_rules() -> None:
     global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
     if len(_FILE_RULES) != 0:
-        return
+        return  # TODO uncomment this??
         # WarnRegexFile(
         #     "combine-ifs-with-elif",
         #     "W998",
@@ -1915,6 +1929,7 @@ def __at_exit(
     sys.exit(total_num_warnings)
 
 
+# TODO fix linting errors here
 def main(**kwargs) -> None:  # pylint: disable=too-many-locals
     """
     This function applies all rules in this module to the files specified by
