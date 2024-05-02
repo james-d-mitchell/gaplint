@@ -1693,6 +1693,9 @@ def main(**kwargs) -> None:
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
     """
+
+    if __name__ != "__main__":
+        sys.argv = []
     args = _parse_args(kwargs)
 
     if __debug__:
