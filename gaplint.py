@@ -1693,8 +1693,7 @@ def main(**kwargs) -> None:
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
     """
-
-    if __name__ != "__main__":
+    if "PYTEST_CURRENT_TEST" in os.environ:
         sys.argv = []
     args = _parse_args(kwargs)
 
