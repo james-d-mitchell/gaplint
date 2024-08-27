@@ -1501,15 +1501,6 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
 
 def __init_rules() -> None:
     global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
-    if len(_FILE_RULES) != 0:
-        return  # TODO uncomment this??
-        # WarnRegexFile(
-        #     "combine-ifs-with-elif",
-        #     "W998",
-        #     r"\n\s*if(.*\n\s*(ErrorNoReturn|Error|return|TryNextMethod)"
-        #     + r"(.*\n\s*elif)?)+.*\n\s*fi;(\n)+\s*if",
-        #     "Combine multiple ifs using elif",
-        # ),
     _FILE_RULES = [
         ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000"),
         ReplaceComments("replace-comments", "M002"),
@@ -1713,12 +1704,6 @@ def __init_rules() -> None:
             "W044",
             r"{\s*(\w+)\s*,(\s*\w+\s*,?)+}\s*->\s*\b\1\b(\)|;)",
             "Replace {x, rest...} -> x by ReturnFirst",
-        ),
-        WarnRegexLine(
-            "use-is-empty",
-            "W045",
-            r"\bif\b.*(\w+\s*=\s*\[\s*\]|Length\(\s*\S+\s*\)\s*=\s*0)",
-            'Use IsEmpty(x) not "x = []" or "Length(x) = 0"',
         ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
