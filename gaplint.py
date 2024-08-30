@@ -89,15 +89,6 @@ _FILE_RULES = []
 
 _ESCAPE_PATTERN = re.compile(r"(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)")
 
-_RULE_DESCRIPTIONS = {
-    "W000": (
-        "W000",
-        "analyse-lvars",
-        "Warns if there are declared local variables that are not used or "
-        "assigned but not used or if there are unused function arguments.",
-    )
-}
-
 ###############################################################################
 # Strings helpers
 ###############################################################################
