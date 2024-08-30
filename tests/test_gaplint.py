@@ -194,7 +194,7 @@ def test_wrong_ext():
 def test_autodoc_whitespace():
     with pytest.raises(SystemExit) as e:
         run_gaplint(files=["tests/test5.g"])
-    assert e.value.code == 1
+    assert e.value.code == 0
 
 
 def test_ReplaceOutputTstOrXMLFile():

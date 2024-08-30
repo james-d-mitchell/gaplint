@@ -198,15 +198,13 @@ class Rule:
         return name_or_code
 
     def __init__(self, name: str, code: str):
-        # TODO remove stuff about code/name being None, since we are not using
-        # that anymore
         assert isinstance(name, str)
         assert isinstance(code, str)
         if __debug__:
-            if code is not None and code in Rule.all_codes:
+            if code in Rule.all_codes:
                 raise ValueError(f"Duplicate rule code {code}")
             Rule.all_codes.add(code)
-            if name is not None and name in Rule.all_names:
+            if name in Rule.all_names:
                 raise ValueError(f"Duplicate rule name {name}")
             Rule.all_names[name] = code
         self.name = name
@@ -1501,6 +1499,8 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
 
 def __init_rules() -> None:
     global _FILE_RULES, _LINE_RULES  # pylint: disable=global-statement
+    if len(_FILE_RULES) != 0:
+        return
     _FILE_RULES = [
         ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000"),
         ReplaceComments("replace-comments", "M002"),
@@ -1531,7 +1531,7 @@ def __init_rules() -> None:
         ),
         WarnRegexFile(
             "if-then-return-true-else-return-false",
-            "W046",
+            "W044",
             r"\bif\b.*?\bthen\b\n?\s*return\s*true;\n?\s*else\s*\n?\s*return\s*false;\n?\s*fi;",
             'Replace "if X then return true; else return false;" by "return X;"',
         ),
@@ -1645,66 +1645,6 @@ def __init_rules() -> None:
             r"(return|\^|\*|,|=|\.|>) - \d",
             "Wrong whitespace around operator -",
         ),
-        WarnRegexLine(
-            "pointless-lambda",
-            "W035",
-            r"\b(\w+)\b\s*->\s*\b\w+\(\1\)\s*\)",
-            "Replace x -> f(x) by f",
-        ),
-        WarnRegexLine(
-            "use-return-true",
-            "W036",
-            r"\b(\w+)\b\s*->\s*\btrue\b\s*\)",
-            "Replace x -> true by ReturnTrue",
-        ),
-        WarnRegexLine(
-            "use-return-false",
-            "W037",
-            r"\b(\w+)\b\s*->\s*\bfalse\b\s*\)",
-            "Replace x -> false by ReturnFalse",
-        ),
-        WarnRegexLine(
-            "use-return-fail",
-            "W038",
-            r"\b(\w+)\b\s*->\s*\bfail\b\s*\)",
-            "Replace x -> fail by ReturnFail",
-        ),
-        WarnRegexLine(
-            "use-remove-not-unbind",
-            "W039",
-            r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
-            "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
-        ),
-        WarnRegexLine(
-            "dont-use-arg",
-            "W040",
-            r"\bfunction\b\s*\(\s*\barg\b\s*\)",
-            "Use arg... instead of arg",
-        ),
-        WarnRegexLine(
-            "no-semicolon-after-function",
-            "W041",
-            r"\bfunction\b\s*\([^)]*\)\s*;",
-            'Remove unnecessary semicolon in "function(.*);"',
-        ),
-        WarnRegexLine(
-            "prefer-last",
-            "W042",
-            r"\b(\w+)\b\s*\[\s*Length\(\1\)\s*\]",
-            "Use Last(x) instead of x[Length(x)]",
-        ),
-        WarnRegexLine(
-            "use-not-eq",
-            "W043",
-            r"\bif\s+not\s+\w+\s*=",
-            'Use "x <> y" instead of "not x = y"',
-        ),
-        WarnRegexLine(
-            "use-return-first",
-            "W044",
-            r"{\s*(\w+)\s*,(\s*\w+\s*,?)+}\s*->\s*\b\1\b(\)|;)",
-            "Replace {x, rest...} -> x by ReturnFirst",
-        ),
         WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
             "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
@@ -1748,6 +1688,60 @@ def __init_rules() -> None:
         ),
         WhitespaceOperator(
             "whitespace-double-dot", "W032", r"\.\.", [r"\.\.(\.|\))"]
+        ),
+        WarnRegexLine(
+            "pointless-lambda",
+            "W035",
+            r"\b(\w+)\b\s*->\s*\b\w+\(\1\)\s*\)",
+            "Replace x -> f(x) by f",
+        ),
+        WarnRegexLine(
+            "use-return-true",
+            "W036",
+            r"\b(\w+)\b\s*->\s*\btrue\b\s*\)",
+            "Replace x -> true by ReturnTrue",
+        ),
+        WarnRegexLine(
+            "use-return-false",
+            "W037",
+            r"\b(\w+)\b\s*->\s*\bfalse\b\s*\)",
+            "Replace x -> false by ReturnFalse",
+        ),
+        WarnRegexLine(
+            "use-return-fail",
+            "W038",
+            r"\b(\w+)\b\s*->\s*\bfail\b\s*\)",
+            "Replace x -> fail by ReturnFail",
+        ),
+        WarnRegexLine(
+            "use-remove-not-unbind",
+            "W039",
+            r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
+            "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
+        ),
+        WarnRegexLine(
+            "dont-use-arg",
+            "W040",
+            r"\bfunction\b\s*\(\s*\barg\b\s*\)",
+            "Use arg... instead of arg",
+        ),
+        WarnRegexLine(
+            "no-semicolon-after-function",
+            "W041",
+            r"\bfunction\b\s*\([^)]*\)\s*;",
+            'Remove unnecessary semicolon in "function(.*);"',
+        ),
+        WarnRegexLine(
+            "use-not-eq",
+            "W042",
+            r"\bif\s+not\s+\w+\s*=",
+            'Use "x <> y" instead of "not x = y"',
+        ),
+        WarnRegexLine(
+            "use-return-first",
+            "W043",
+            r"{\s*(\w+)\s*,(\s*\w+\s*,?)+}\s*->\s*\b\1\b(\)|;)",
+            "Replace {x, rest...} -> x by ReturnFirst",
         ),
     ]
 
