@@ -15,7 +15,7 @@ from copy import deepcopy
 from importlib.metadata import version
 from os import listdir
 from os.path import abspath, exists, isdir, isfile, join
-from typing import Any, Callable, Dict, List, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Set, Tuple, Union, Iterator
 
 from rich.console import Console
 from rich.table import Table
@@ -208,9 +208,10 @@ class Rule:
             return Rule.all_names[name_or_code]
         return name_or_code
 
-    def __init__(self, name: str, code: str):
+    def __init__(self, name: str, code: str, desc: str = ""):
         assert isinstance(name, str)
         assert isinstance(code, str)
+        assert isinstance(desc, str)
         if __debug__:
             if code in Rule.all_codes:
                 raise ValueError(f"Duplicate rule code {code}")
@@ -220,6 +221,7 @@ class Rule:
             Rule.all_names[name] = code
         self.name = name
         self.code = code
+        self.desc = desc
 
     def reset(self) -> None:
         """
@@ -244,12 +246,13 @@ class WarnRegexBase(Rule):
         self,
         name: str,
         code: str,
+        desc: str,
         pattern: str,
         warning_msg: str,
         exceptions: List[str] = [],
         skip: Callable[[str], bool] = lambda _: False,
     ) -> None:
-        Rule.__init__(self, name, code)
+        Rule.__init__(self, name, code, desc)
         assert isinstance(pattern, str)
         assert isinstance(warning_msg, str)
         assert isinstance(exceptions, list)
@@ -302,8 +305,8 @@ class ReplaceAnnoyUTF8Chars(Rule):
     currently does not.
     """
 
-    def __init__(self, name: str, code: str) -> None:
-        Rule.__init__(self, name, code)
+    def __init__(self, name: str, code: str, desc: str = "") -> None:
+        Rule.__init__(self, name, code, desc)
         self._chars = {
             "\xc2\x82": ",",  # High code comma
             "\xc2\x84": ",,",  # High code double comma
@@ -416,8 +419,10 @@ class ReplaceBetweenDelimiters(Rule):
     This rule does not return any warnings.
     """
 
-    def __init__(self, name: str, code: str, delim1: str, delim2: str) -> None:
-        Rule.__init__(self, name, code)
+    def __init__(
+        self, name: str, code: str, desc: str, delim1: str, delim2: str
+    ) -> None:
+        Rule.__init__(self, name, code, desc)
         assert isinstance(delim1, str)
         assert isinstance(delim2, str)
         self._delims = [re.compile(delim1), re.compile(delim2)]
@@ -471,8 +476,8 @@ class ReplaceOutputTstOrXMLFile(Rule):
     '@''s.
     """
 
-    def __init__(self, name: str, code: str) -> None:
-        Rule.__init__(self, name, code)
+    def __init__(self, name: str, code: str, desc: str = "") -> None:
+        Rule.__init__(self, name, code, desc)
         self._consuming = False
         self._sol_p = re.compile(r"(^|\n)gap>\s*")
         self._eol_p = re.compile(r"($|\n)")
@@ -509,17 +514,27 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     """
 
     SubRules = {
-        "W047": Rule("unused-func-args", "W047"),
-        "W048": Rule("duplicate-function", "W048"),
-        "W049": Rule("use-return-true-alt", "W049"),
-        "W050": Rule("use-return-false-alt", "W050"),
-        "W051": Rule("use-return-fail-alt", "W051"),
-        "W052": Rule("use-return-first-alt", "W052"),
-        "W053": Rule("use-id-func", "W053"),
+        "W040": Rule(
+            "use-id-func",
+            "W040",
+            "Warns that [code]x -> x[/code] and "
+            "[code]function(x) return x; end;[/code] can be "
+            "replaced by [code]IdFunc[/code].",
+        ),
+        "W046": Rule(
+            "unused-func-args",
+            "W046",
+            "Warns if there are unused function parameters (use [code]_[/code] to suppress).",
+        ),
+        "W047": Rule(
+            "duplicate-function",
+            "W047",
+            "Warns if there is a duplicate function.",
+        ),
     }
 
-    def __init__(self, name: str, code: str) -> None:
-        Rule.__init__(self, name, code)
+    def __init__(self, name: str, code: str, desc: str = "") -> None:
+        Rule.__init__(self, name, code, desc)
         self.reset()
 
         self._function_p = re.compile(r"\bfunction\b")
@@ -650,10 +665,10 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             if not _is_rule_suppressed(
                 fname, linenum + 1, self
             ) and not _is_rule_suppressed(
-                fname, linenum + 1, AnalyseLVars.SubRules["W047"]
+                fname, linenum + 1, AnalyseLVars.SubRules["W046"]
             ):
                 msg = f"Unused function arguments: {', '.join(func_args)}"
-                _warn(self.SubRules["W047"], fname, linenum, msg)
+                _warn(self.SubRules["W046"], fname, linenum, msg)
                 nr_warnings += 1
         return nr_warnings
 
@@ -664,13 +679,13 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             if not _is_rule_suppressed(
                 fname, linenum + 1, self
             ) and not _is_rule_suppressed(
-                fname, linenum + 1, AnalyseLVars.SubRules["W048"]
+                fname, linenum + 1, AnalyseLVars.SubRules["W047"]
             ):
                 func_body = re.sub(r"\n", "", func_body)
                 try:
                     index = self._func_bodies.index(func_body)
                     _warn(
-                        AnalyseLVars.SubRules["W048"],
+                        AnalyseLVars.SubRules["W047"],
                         fname,
                         linenum,
                         f"Duplicate function with {num_func_lines + 1} > {limit}"
@@ -693,9 +708,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
 
         line = func_body.split("\n")[-2]
         for bval, code in (
-            ("true", "W049"),
-            ("false", "W050"),
-            ("fail", "W051"),
+            ("true", "W036"),
+            ("false", "W037"),
+            ("fail", "W038"),
         ):
             if (
                 not _is_rule_suppressed(fname, linenum + 1, self)
@@ -715,12 +730,12 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             len(func_args_all) > 1
             and not _is_rule_suppressed(fname, linenum + 1, self)
             and not _is_rule_suppressed(
-                fname, linenum + 1, AnalyseLVars.SubRules["W052"]
+                fname, linenum + 1, AnalyseLVars.SubRules["W039"]
             )
             and re.search(rf"^\s*\breturn\b\s+\b{func_args_all[0]}\s*;", line)
         ):
             _warn(
-                self.SubRules["W052"],
+                self.SubRules["W039"],
                 fname,
                 linenum,
                 "Replace function(x, y) return x; end; by ReturnFirst",
@@ -730,12 +745,12 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             len(func_args_all) == 1
             and not _is_rule_suppressed(fname, linenum + 1, self)
             and not _is_rule_suppressed(
-                fname, linenum + 1, AnalyseLVars.SubRules["W053"]
+                fname, linenum + 1, AnalyseLVars.SubRules["W040"]
             )
             and re.search(rf"^\s*return\b\s+\b{func_args_all[0]}\s*;", line)
         ):
             _warn(
-                self.SubRules["W053"],
+                self.SubRules["W040"],
                 fname,
                 linenum,
                 'Replace "function(x) return x; end;" by IdFunc',
@@ -898,8 +913,8 @@ class LineTooLong(Rule):
     This rule does not modify the line.
     """
 
-    def __init__(self, name: str, code: str) -> None:
-        Rule.__init__(self, name, code)
+    def __init__(self, name: str, code: str, desc: str = "") -> None:
+        Rule.__init__(self, name, code, desc)
 
     def __call__(
         self, fname: str, lines: str, linenum: int, nr_warnings: int = 0
@@ -945,9 +960,14 @@ class WhitespaceOperator(WarnRegexLine):
     """
 
     def __init__(
-        self, name: str, code: str, op: str, exceptions: List[str] = []
+        self,
+        name: str,
+        code: str,
+        desc: str,
+        op: str,
+        exceptions: List[str] = [],
     ):  # pylint: disable=W0102
-        WarnRegexLine.__init__(self, name, code, "", "")
+        WarnRegexLine.__init__(self, name, code, desc, "", "")
         assert isinstance(op, str)
         assert op[0] != "(" and op[-1] != ")"
         assert exceptions is None or isinstance(exceptions, list)
@@ -971,9 +991,15 @@ class UnalignedPatterns(Rule):
 
     # TODO use keyword args?
     def __init__(  # pylint: disable=too-many-arguments
-        self, name: str, code: str, pattern: str, group: int, msg: str
+        self,
+        name: str,
+        code: str,
+        desc: str,
+        pattern: str,
+        group: int,
+        msg: str,
     ) -> None:
-        Rule.__init__(self, name, code)
+        Rule.__init__(self, name, code, desc)
         assert isinstance(pattern, str)
         assert isinstance(group, int)
         assert isinstance(msg, str)
@@ -1014,8 +1040,8 @@ class Indentation(Rule):
     required.
     """
 
-    def __init__(self, name: str, code: str) -> None:
-        Rule.__init__(self, name, code)
+    def __init__(self, name: str, code: str, desc: str = "") -> None:
+        Rule.__init__(self, name, code, desc)
         self._expected = 0
         self._indent = re.compile(r"^(\s*)\S")
         self._blank = re.compile(r"^\s*$")
@@ -1085,6 +1111,18 @@ class Indentation(Rule):
         self._expected = 0
 
 
+def all_rules() -> Iterator[Rule]:
+    """
+    Returns an iterator of all the current rules.
+    """
+    __init_rules()
+    return itertools.chain(
+        iter(_FILE_RULES),
+        iter(_LINE_RULES),
+        iter(AnalyseLVars.SubRules.values()),
+    )
+
+
 ###############################################################################
 ###############################################################################
 
@@ -1094,20 +1132,38 @@ def __explain(args: Dict[str, Any]) -> None:
         return
     args["explain"] = args["explain"].split(",")
     args["explain"].sort()
+    if len(args["explain"]) == 1 and args["explain"][0] == "all":
+        args["explain"] = [
+            x.code for x in all_rules() if not x.code.startswith("M")
+        ]
 
-    table = Table(title="gaplint rules")
-
-    table.add_column("Code", justify="left", style="cyan", no_wrap=True)
-    table.add_column("Name", justify="left", style="magenta")
-    table.add_column(
-        "Description", justify="left", style="green", no_wrap=False
-    )
-
+    rows = []
     for name_or_code in args["explain"]:
-        code, name, desc = _RULE_DESCRIPTIONS[name_or_code]
-        table.add_row(code, name, desc)
-    console = Console()
-    console.print(table)
+        try:
+            rule = next(
+                x for x in all_rules() if name_or_code in (x.code, x.name)
+            )
+            rows.append((rule.code, rule.name, rule.desc))
+        except StopIteration:
+            _info_action(
+                f'CANNOT EXPLAIN invalid rule name or code "{name_or_code}"'
+            )
+    rows.sort()
+    rows = list(dict.fromkeys(rows))
+    if len(rows) > 0:
+        table = Table(
+            title="gaplint rules", show_lines=True, width=90, min_width=80
+        )
+
+        table.add_column("Code", justify="left", style="#FF1053", no_wrap=True)
+        table.add_column("Name", justify="left", style="#A1E5AB")
+        table.add_column(
+            "Description", justify="left", style="#66C7F4", no_wrap=False
+        )
+        for code, name, desc in rows:
+            table.add_row(code, name, desc)
+        console = Console()
+        console.print(table)
     sys.exit(0)
 
 
@@ -1529,73 +1585,99 @@ def __init_rules() -> None:
     if len(_FILE_RULES) != 0:
         return
     _FILE_RULES = [
-        ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000"),
-        ReplaceComments("replace-comments", "M002"),
-        ReplaceOutputTstOrXMLFile("replace-output-tst-or-xml-file", "M001"),
+        ReplaceAnnoyUTF8Chars("replace-weird-chars", "M000", ""),
+        ReplaceComments("replace-comments", "M002", ""),
+        ReplaceOutputTstOrXMLFile("replace-output-tst-or-xml-file", "M001", ""),
         ReplaceBetweenDelimiters(
-            "replace-multiline-strings", "M003", r'"""', r'"""'
+            "replace-multiline-strings", "M003", "", r'"""', r'"""'
         ),
-        ReplaceBetweenDelimiters("replace-strings", "M004", r'"', r'"'),
-        ReplaceBetweenDelimiters("replace-chars", "M005", r"'", r"'"),
-        AnalyseLVars("analyse-lvars", "W000"),
+        ReplaceBetweenDelimiters("replace-strings", "M004", "", r'"', r'"'),
+        ReplaceBetweenDelimiters("replace-chars", "M005", "", r"'", r"'"),
+        AnalyseLVars(
+            "analyse-lvars",
+            "W000",
+            "Warns if there are declared local variables that are not used or "
+            "assigned but not used.",
+        ),
         WarnRegexFile(
             "consecutive-empty-lines",
             "W001",
+            "Warns if there are consecutive empty lines.",
             r"\n\s*\n\s*\n",
             "Consecutive empty lines",
         ),
         WarnRegexFile(
             "assign-then-return",
             "W033",
+            "Warns if a variable is pointlessly assigned and then immediately returned.",
             r"(\w+)\s*:=[^;]*;\n\s*return\s+(\1);",
             "Pointless assignment immediately returned",
         ),
         WarnRegexFile(
             "1-line-function",
             "W034",
+            "Warns that a one line function could be a lambda.",
             r"\bfunction\b\s*\((?!(arg|.+\.\.\.)).*\).*?\n.*?\breturn\b.*?\n.*?\bend\b",
             "One line function could be a lambda",
         ),
         WarnRegexFile(
             "if-then-return-true-else-return-false",
             "W044",
+            "Warns that [code]if XYZ then return true; else return "
+            "false; fi;[/code] by [code]return XYZ;[/code]",
             r"\bif\b.*?\bthen\b\n?\s*return\s*true;\n?\s*else\s*\n?\s*return\s*false;\n?\s*fi;",
-            'Replace "if X then return true; else return false;" by "return X;"',
+            'Replace "if X then return true; else return false; fi;" by "return X;"',
         ),
         WarnRegexFile(
             "if-then-return-false-else-return-true",
-            "W054",
+            "W045",
+            "Warns that [code]if XYZ then return false; else return "
+            "true; fi;[/code] by [code]return not XYZ;[/code]",
             r"\bif\b.*?\bthen\b\n?\s*return\s*false;\n?\s*else\s*\n?\s*return\s*true;\n?\s*fi;",
-            'Replace "if X then return false; else return true;" by "return not X;"',
+            'Replace "if X then return false; else return true; fi;" by "return not X;"',
         ),
     ]
     _LINE_RULES = [
-        LineTooLong("line-too-long", "W002"),
-        Indentation("indentation", "W003"),
+        LineTooLong(
+            "line-too-long",
+            "W002",
+            "Warns if there is a line which is longer than the "
+            "configured maximum (defaults to [code]80[/code]).",
+        ),
+        Indentation(
+            "indentation", "W003", "Warns if a line is under indented."
+        ),
         UnalignedPatterns(
             "align-assignments",
             "W004",
+            "Warns if there are assignments in consecutive lines that are not "
+            "aligned.",
             r":=",
             0,
-            "Unaligned assignments in " + "consecutive lines",
+            "Unaligned assignments in consecutive lines",
         ),
         UnalignedPatterns(
             "align-trailing-comments",
             "W005",
+            "Warns if there are trailing comments in consecutive lines that "
+            "are not aligned.",
             r"\w.*(#+)",
             1,
-            "Unaligned comments in " + "consecutive lines",
+            "Unaligned comments in consecutive lines",
         ),
         UnalignedPatterns(
             "align-comments",
             "W006",
+            "Warns if there are non-trailing comments in consecutive lines "
+            "that are not aligned.",
             r"^\s*(#+)",
             1,
-            "Unaligned comments in " + "consecutive lines",
+            "Unaligned comments in consecutive lines",
         ),
         WarnRegexLine(
             "trailing-whitespace",
             "W007",
+            "Warns if there is trailing whitespace at the end of a line.",
             r"^(?!#\!).*\s+$",
             "Trailing whitespace",
             [],
@@ -1604,39 +1686,50 @@ def __init_rules() -> None:
         WarnRegexLine(
             "no-space-after-comment",
             "W008",
+            "Warns if there is no space after any number of # is a line.",
             r"#+[^ \t\n\r\f\v#\!]",
             "No space after comment",
         ),
         WarnRegexLine(
             "not-enough-space-before-comment",
             "W009",
+            "Warns if there is not enough space before the first # in any line"
+            " (defaults to [code]2[/code]).",
             r"[^ \t\n\r\f\v#]\s?#",
             "At least 2 spaces before comment",
         ),
         WarnRegexLine(
             "space-after-comma",
             "W010",
+            "Warns if a comma is followed by more than [code]1[/code] space.",
             r",(([^,\s]+)|(\s{2,})\w)",
             "Exactly one space required after comma",
         ),
         WarnRegexLine(
-            "space-before-comma", "W011", r"\s,", "No space before comma"
+            "space-before-comma",
+            "W011",
+            "Warns if a comma is preceded by a space.",
+            r"\s,",
+            "No space before comma",
         ),
         WarnRegexLine(
             "space-after-bracket",
             "W012",
+            "Warns if there is a space after an opening bracket.",
             r"(\(|\[|\{)[ \t\f\v]",
             "No space allowed after bracket",
         ),
         WarnRegexLine(
             "space-before-bracket",
             "W013",
+            "Warns if there is a space before a closing bracket.",
             r"\s(\)|\]|\})",
             "No space allowed before bracket",
         ),
         WarnRegexLine(
             "multiple-semicolons",
             "W014",
+            "Warns if there is more than one semicolon in a line.",
             r";.*;",
             "More than one semicolon",
             [],
@@ -1645,40 +1738,62 @@ def __init_rules() -> None:
         WarnRegexLine(
             "keyword-function",
             "W015",
+            "Warns if the keyword [code]function[/code] is not followed by an open bracket.",
             r"\bfunction\b[^\(]",
             "Keyword 'function' not followed by (",
         ),
         WarnRegexLine(
             "whitespace-op-assign",
             "W016",
+            "Warns if there is not exactly 1 space after an assignment "
+            " ([code]:=[/code]).",
             r"(\S:=|:=(\S|\s{2,}))",
             "Wrong whitespace around operator :=",
         ),
         WarnRegexLine(
             "tabs",
             "W017",
+            "Warns if there are tabs.",
             r"\t",
             "There are tabs in this line, replace with spaces",
         ),
         WarnRegexLine(
             "function-local-same-line",
             "W018",
+            "Warns if the keywords [code]function[/code] and"
+            " [code]local[/code] appear in the same line.",
             r"function\W.*\Wlocal\W",
             "Keywords 'function' and 'local' in the same line",
         ),
         WarnRegexLine(
             "whitespace-op-minus",
             "W019",
+            "Warns if there is not exactly 1 space either side of a minus "
+            "([code]-[/code]) operator",
             r"(return|\^|\*|,|=|\.|>) - \d",
             "Wrong whitespace around operator -",
         ),
-        WhitespaceOperator("whitespace-op-plus", "W020", r"\+", [r"^\s*\+"]),
         WhitespaceOperator(
-            "whitespace-op-multiply", "W021", r"\*", [r"^\s*\*", r"\\\*"]
+            "whitespace-op-plus",
+            "W020",
+            "Warns if there is not exactly 1 space either side of a plus "
+            "([code]+[/code]) operator.",
+            r"\+",
+            [r"^\s*\+"],
+        ),
+        WhitespaceOperator(
+            "whitespace-op-multiply",
+            "W021",
+            "Warns if there is not exactly 1 space either side of a multiply "
+            "([code]*[/code]) operator.",
+            r"\*",
+            [r"^\s*\*", r"\\\*"],
         ),
         WhitespaceOperator(
             "whitespace-op-negative",
             "W022",
+            "Warns if there is not exactly 1 space preceding a negative "
+            "([code]-[/code]) operator.",
             r"-",
             [
                 r"-(>|\[)",
@@ -1691,84 +1806,151 @@ def __init_rules() -> None:
         WhitespaceOperator(
             "whitespace-op-less-than",
             "W023",
+            "Warns if there is not exactly 1 space either side of a "
+            "less-than ([code]<[/code]) operator.",
             r"\<",
             [r"^\s*\<", r"\<(\>|=)", r"\\\<"],
         ),
-        WhitespaceOperator("whitespace-op-less-equal", "W024", r"\<="),
         WhitespaceOperator(
-            "whitespace-op-more-than", "W025", r"\>", [r"(-|\<)\>", r"\>="]
+            "whitespace-op-less-equal",
+            "W024",
+            "Warns if there is not exactly 1 space either side of a less-than "
+            "or equal-to ([code]<=[/code]) operator.",
+            r"\<=",
         ),
-        WhitespaceOperator("whitespace-op-more-equal", "W026", r"\>="),
+        WhitespaceOperator(
+            "whitespace-op-more-than",
+            "W025",
+            "Warns if there is not exactly 1 space either side of a "
+            "greater-than ([code]>[/code]) operator.",
+            r"\>",
+            [r"(-|\<)\>", r"\>="],
+        ),
+        WhitespaceOperator(
+            "whitespace-op-more-equal",
+            "W026",
+            "Warns if there is not exactly 1 space either side of "
+            "a greater than or equal to ([code]>=[/code]) operator.",
+            r"\>=",
+        ),
         WhitespaceOperator(
             "whitespace-op-equals",
             "W027",
+            "Warns if there is not exactly 1 space either side of an equals "
+            "([code]=[/code]) operator.",
             r"=",
             [r"(:|>|<)=", r"^\s*=", r"\\="],
         ),
-        WhitespaceOperator("whitespace-op-lambda", "W028", r"->"),
-        WhitespaceOperator("whitespace-op-divide", "W029", r"\/", [r"\\\/"]),
         WhitespaceOperator(
-            "whitespace-op-power", "W030", r"\^", [r"^\s*\^", r"\\\^"]
+            "whitespace-op-lambda",
+            "W028",
+            "Warns if there is not exactly 1 space either side of the mapping "
+            "([code]->[/code]) operator in a lambda function.",
+            r"->",
         ),
         WhitespaceOperator(
-            "whitespace-op-not-equal", "W031", r"<>", [r"^\s*<>"]
+            "whitespace-op-divide",
+            "W029",
+            "Warns if there is not exactly 1 space either side of "
+            "a division ([code]/[/code]) operator.",
+            r"\/",
+            [r"\\\/"],
         ),
         WhitespaceOperator(
-            "whitespace-double-dot", "W032", r"\.\.", [r"\.\.(\.|\))"]
+            "whitespace-op-power",
+            "W030",
+            "Warns if there is not exactly 1 space either side of a power "
+            "([code]^[/code]) operator.",
+            r"\^",
+            [r"^\s*\^", r"\\\^"],
+        ),
+        WhitespaceOperator(
+            "whitespace-op-not-equal",
+            "W031",
+            "Warns if there is not exactly 1 space either side of a not-equal"
+            " ([code]<>[/code]) operator.",
+            r"<>",
+            [r"^\s*<>"],
+        ),
+        WhitespaceOperator(
+            "whitespace-double-dot",
+            "W032",
+            "Warns if there is not exactly 1 space either side of an arithmetic "
+            "progression ([code]..[/code]) operator.",
+            r"\.\.",
+            [r"\.\.(\.|\))"],
         ),
         WarnRegexLine(
             "pointless-lambda",
             "W035",
+            "Warns when there are lambda functions of the form "
+            "[code]x -> f(x)[/code] which can be replaced by [code]f[/code].",
             r"\b(\w+)\b\s*->\s*\b\w+\(\1\)\s*\)",
             "Replace x -> f(x) by f",
         ),
         WarnRegexLine(
             "use-return-true",
             "W036",
+            "Warns that [code]x -> true[/code] can be replaced by "
+            "[code]ReturnTrue[/code].",
             r"\b(\w+)\b\s*->\s*\btrue\b\s*\)",
             "Replace x -> true by ReturnTrue",
         ),
         WarnRegexLine(
             "use-return-false",
             "W037",
+            "Warns that [code]x -> false[/code] can be replaced by "
+            "[code]ReturnFalse[/code].",
             r"\b(\w+)\b\s*->\s*\bfalse\b\s*\)",
             "Replace x -> false by ReturnFalse",
         ),
         WarnRegexLine(
             "use-return-fail",
             "W038",
+            "Warns that [code]x -> fail[/code] can be replaced by "
+            "[code]ReturnFail[/code].",
             r"\b(\w+)\b\s*->\s*\bfail\b\s*\)",
             "Replace x -> fail by ReturnFail",
         ),
         WarnRegexLine(
-            "use-remove-not-unbind",
+            "use-return-first",
             "W039",
-            r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
-            "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
-        ),
-        WarnRegexLine(
-            "dont-use-arg",
-            "W040",
-            r"\bfunction\b\s*\(\s*\barg\b\s*\)",
-            "Use arg... instead of arg",
+            "Warns to replace lambdas of the form [code]{x, y, z, ...} ->"
+            " x[/code] by [code]ReturnFirst[/code].",
+            r"{\s*(\w+)\s*,(\s*\w+\s*,?)+}\s*->\s*\b\1\b(\)|;)",
+            'Replace "{x, y, z, ...} -> x" by ReturnFirst',
         ),
         WarnRegexLine(
             "no-semicolon-after-function",
             "W041",
+            "Warns if there's an unnecessary semicolon in "
+            "[code]function(.*);[/code].",
             r"\bfunction\b\s*\([^)]*\)\s*;",
             'Remove unnecessary semicolon in "function(.*);"',
         ),
         WarnRegexLine(
             "use-not-eq",
             "W042",
+            "Warns to use [code]x <> y[/code] instead of "
+            "[code]not x = y[/code].",
             r"\bif\s+not\s+\w+\s*=",
             'Use "x <> y" instead of "not x = y"',
         ),
         WarnRegexLine(
-            "use-return-first",
+            "dont-use-arg",
             "W043",
-            r"{\s*(\w+)\s*,(\s*\w+\s*,?)+}\s*->\s*\b\1\b(\)|;)",
-            "Replace {x, rest...} -> x by ReturnFirst",
+            "Warns to use [code]function(arg...)[/code] instead of "
+            "[code]function(arg)[/code].",
+            r"\bfunction\b\s*\(\s*\barg\b\s*\)",
+            "Use arg... instead of arg",
+        ),
+        WarnRegexLine(
+            "use-remove-not-unbind",
+            "W048",
+            "Warns that [code]Unbind(x[Length[x]])[/code] can be replaced by"
+            " [code]Remove(x)[/code].",
+            r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
+            "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
         ),
     ]
 
