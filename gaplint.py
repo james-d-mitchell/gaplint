@@ -6,6 +6,7 @@ file according to some conventions.
 # pylint: disable=fixme, too-many-lines
 
 import argparse
+import functools
 import itertools
 import os
 import re
@@ -15,7 +16,7 @@ from copy import deepcopy
 from importlib.metadata import version
 from os import listdir
 from os.path import abspath, exists, isdir, isfile, join
-from typing import Any, Callable, Dict, List, Set, Tuple, Union, Iterator
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 from rich.console import Console
 from rich.table import Table
@@ -715,12 +716,12 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             if (
                 not _is_rule_suppressed(fname, linenum + 1, self)
                 and not _is_rule_suppressed(
-                    fname, linenum + 1, AnalyseLVars.SubRules[code]
+                    fname, linenum + 1, all_rules()[code]
                 )
                 and re.search(rf"^\s*\breturn\b\s+\b{bval}\b", line)
             ):
                 _warn(
-                    self.SubRules[code],
+                    all_rules()[code],
                     fname,
                     linenum,
                     f"Replace one line function by Return{bval.capitalize()}",
@@ -729,13 +730,11 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         if (
             len(func_args_all) > 1
             and not _is_rule_suppressed(fname, linenum + 1, self)
-            and not _is_rule_suppressed(
-                fname, linenum + 1, AnalyseLVars.SubRules["W039"]
-            )
+            and not _is_rule_suppressed(fname, linenum + 1, all_rules()["W039"])
             and re.search(rf"^\s*\breturn\b\s+\b{func_args_all[0]}\s*;", line)
         ):
             _warn(
-                self.SubRules["W039"],
+                all_rules()["W039"],
                 fname,
                 linenum,
                 "Replace function(x, y) return x; end; by ReturnFirst",
@@ -1111,16 +1110,20 @@ class Indentation(Rule):
         self._expected = 0
 
 
-def all_rules() -> Iterator[Rule]:
+@functools.cache
+def all_rules() -> dict[str, Rule]:
     """
     Returns an iterator of all the current rules.
     """
     __init_rules()
-    return itertools.chain(
-        iter(_FILE_RULES),
-        iter(_LINE_RULES),
-        iter(AnalyseLVars.SubRules.values()),
-    )
+    return {
+        x.code: x
+        for x in itertools.chain(
+            iter(_FILE_RULES),
+            iter(_LINE_RULES),
+            iter(AnalyseLVars.SubRules.values()),
+        )
+    }
 
 
 ###############################################################################
@@ -1134,14 +1137,16 @@ def __explain(args: Dict[str, Any]) -> None:
     args["explain"].sort()
     if len(args["explain"]) == 1 and args["explain"][0] == "all":
         args["explain"] = [
-            x.code for x in all_rules() if not x.code.startswith("M")
+            x for x in all_rules().keys() if not x.startswith("M")
         ]
 
     rows = []
     for name_or_code in args["explain"]:
         try:
             rule = next(
-                x for x in all_rules() if name_or_code in (x.code, x.name)
+                x
+                for x in all_rules().values()
+                if name_or_code in (x.code, x.name)
             )
             rows.append((rule.code, rule.name, rule.desc))
         except StopIteration:
