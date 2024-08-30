@@ -151,7 +151,9 @@ def _warn_or_error(rule, fname: str, linenum: int, msg: str) -> None:
         assert isinstance(fname, str)
         assert isinstance(linenum, int)
         assert isinstance(msg, str)
-        sys.stderr.write(f"{fname}:{linenum + 1}: {msg} [{rule.code}]\n")
+        sys.stderr.write(
+            f"{fname}:{linenum + 1}: {msg} [{rule.code}/{rule.name}]\n"
+        )
 
 
 def _warn(rule, fname: str, linenum: int, msg: str) -> None:
@@ -518,8 +520,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         "W040": Rule(
             "use-id-func",
             "W040",
-            "Warns that [code]x -> x[/code] and "
-            "[code]function(x) return x; end;[/code] can be "
+            "Warns that [code]function(x) return x; end;[/code] can be "
             "replaced by [code]IdFunc[/code].",
         ),
         "W046": Rule(
@@ -737,7 +738,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 all_rules()["W039"],
                 fname,
                 linenum,
-                "Replace function(x, y) return x; end; by ReturnFirst",
+                "Replace function(x, y, z, ...) return x; end; by ReturnFirst",
             )
             nr_warnings += 1
         if (
@@ -1482,6 +1483,7 @@ def __normalize_disabled_rules(
 
     # Special case for AnalyseLVars.SubRules since they are covered by two
     # codes: W000; and the subrule code.
+    # TODO double check still ok
     if (
         any(x.code in enabled for x in AnalyseLVars.SubRules.values())
         and "W000" in args["disable"]
@@ -1971,9 +1973,7 @@ def __can_disable_rule_name_or_code(name_or_code: str, where: str) -> bool:
 
     if name_or_code == "all":
         return True
-    for rule in itertools.chain(
-        iter(_LINE_RULES), iter(_FILE_RULES), AnalyseLVars.SubRules.values()
-    ):
+    for rule in all_rules().values():
         if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
                 _info_action(
