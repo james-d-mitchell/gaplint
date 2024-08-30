@@ -15,7 +15,7 @@ from copy import deepcopy
 from importlib.metadata import version
 from os import listdir
 from os.path import abspath, exists, isdir, isfile, join
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 import yaml
 
@@ -291,10 +291,7 @@ class ReplaceAnnoyUTF8Chars(Rule):
     currently does not.
     """
 
-    # TODO remove the Optional[str] = None here
-    def __init__(
-        self, name: Optional[str] = None, code: Optional[str] = None
-    ) -> None:
+    def __init__(self, name: str, code: str) -> None:
         Rule.__init__(self, name, code)
         self._chars = {
             "\xc2\x82": ",",  # High code comma
@@ -463,10 +460,7 @@ class ReplaceOutputTstOrXMLFile(Rule):
     '@''s.
     """
 
-    # TODO remove the Optional[str] = None here
-    def __init__(
-        self, name: Optional[str] = None, code: Optional[str] = None
-    ) -> None:
+    def __init__(self, name: str, code: str) -> None:
         Rule.__init__(self, name, code)
         self._consuming = False
         self._sol_p = re.compile(r"(^|\n)gap>\s*")
@@ -513,10 +507,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         "W053": Rule("use-id-func", "W053"),
     }
 
-    def __init__(
-        self, name: Optional[str] = None, code: Optional[str] = None
-    ) -> None:
-        # TODO remove Optional[str] = None here
+    def __init__(self, name: str, code: str) -> None:
         Rule.__init__(self, name, code)
         self.reset()
 
@@ -896,10 +887,7 @@ class LineTooLong(Rule):
     This rule does not modify the line.
     """
 
-    def __init__(
-        self, name: Optional[str] = None, code: Optional[str] = None
-    ) -> None:
-        # TODO remove Optional[str] = None
+    def __init__(self, name: str, code: str) -> None:
         Rule.__init__(self, name, code)
 
     def __call__(
@@ -1087,7 +1075,6 @@ class Indentation(Rule):
 
 
 ###############################################################################
-# TODO
 ###############################################################################
 
 
@@ -1272,9 +1259,8 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
     return args
 
 
-# TODO return from where disable+enable comes
 # TODO fix too many branches
-def __merge_args(
+def __merge_args(  # pylint: disable=too-many-branches
     cmd_line_args: Dict[str, Any],
     kwargs: Dict[str, Any],
     config_yml_fname: str,
@@ -1909,7 +1895,9 @@ def __at_exit(
 
 
 # TODO fix linting errors here
-def main(**kwargs) -> None:  # pylint: disable=too-many-locals
+def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
+    **kwargs,
+) -> None:
     """
     This function applies all rules in this module to the files specified by
     the keywords argument files.
