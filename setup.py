@@ -1,6 +1,7 @@
 """
 A rudimentary linter for GAP (https://www.gap-system.org/) code.
 """
+
 from setuptools import find_packages, setup
 
 with open("README.rst", "r", encoding="utf8") as f:
@@ -19,7 +20,7 @@ with open("README.rst", "r", encoding="utf8") as f:
         include_package_data=True,
         zip_safe=False,
         platforms="any",
-        install_requires=["argparse", "pyyaml"],
+        install_requires=["argparse", "pyyaml", "rich"],
         entry_points={
             "console_scripts": [
                 "gaplint = gaplint:main",

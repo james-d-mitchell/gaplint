@@ -17,6 +17,8 @@ from os import listdir
 from os.path import abspath, exists, isdir, isfile, join
 from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
+from rich.console import Console
+from rich.table import Table
 import yaml
 
 ###############################################################################
@@ -73,6 +75,7 @@ _DEFAULT_CONFIG = {
     "silent": False,
     "verbose": False,
     "files": [],
+    "explain": "",
 }
 
 _GLOB_CONFIG = {}
@@ -85,6 +88,14 @@ _FILE_RULES = []
 
 _ESCAPE_PATTERN = re.compile(r"(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)")
 
+_RULE_DESCRIPTIONS = {
+    "W000": (
+        "W000",
+        "analyse-lvars",
+        "Warns if there are declared local variables that are not used or "
+        "assigned but not used or if there are unused function arguments.",
+    )
+}
 
 ###############################################################################
 # Strings helpers
@@ -1078,6 +1089,28 @@ class Indentation(Rule):
 ###############################################################################
 
 
+def __explain(args: Dict[str, Any]) -> None:
+    if "explain" not in args or len(args["explain"]) == 0:
+        return
+    args["explain"] = args["explain"].split(",")
+    args["explain"].sort()
+
+    table = Table(title="gaplint rules")
+
+    table.add_column("Code", justify="left", style="cyan", no_wrap=True)
+    table.add_column("Name", justify="left", style="magenta")
+    table.add_column(
+        "Description", justify="left", style="green", no_wrap=False
+    )
+
+    for name_or_code in args["explain"]:
+        code, name, desc = _RULE_DESCRIPTIONS[name_or_code]
+        table.add_row(code, name, desc)
+    console = Console()
+    console.print(table)
+    sys.exit(0)
+
+
 def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
     """
     Pass kwargs as an argument for the check for \"files\" o/w not needed.
@@ -1090,7 +1123,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         return {}
     parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
     if "files" not in kwargs:
-        parser.add_argument("files", nargs="+", help="the files to lint")
+        parser.add_argument("files", nargs="*", help="the files to lint")
 
     default = _DEFAULT_CONFIG["max-warnings"]
     parser.add_argument(
@@ -1116,7 +1149,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         nargs="?",
         type=str,
         default=None,
-        help="comma separated rule names and/or codes to disable (default: None)",
+        help=f"comma separated rule names and/or codes to disable (default: {default})",
     )
 
     default = _DEFAULT_CONFIG["dupl-func-min-len"]
@@ -1135,7 +1168,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         nargs="?",
         type=str,
         default=None,
-        help='comma separated rule names and/or codes to enable (default: "all")',
+        help=f"comma separated rule names and/or codes to enable (default: {default})",
     )
 
     default = _DEFAULT_CONFIG["indentation"]
@@ -1170,6 +1203,14 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--version",
         action="version",
         version=f"%(prog)s version {vers_num}",
+    )
+
+    parser.add_argument(
+        "--explain",
+        nargs="?",
+        type=str,
+        default="",
+        help=f"comma separated rule names and/or codes to explain (default: {default})",
     )
 
     args = parser.parse_args()
@@ -1936,6 +1977,7 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
     __init_rules()
 
     args = __merge_args(cmd_line_args, kwargs, config_yml_fname, yml_dic)
+    __explain(args)
     # The next lines has to come after __init_rules because we need to know what
     # all of the rules are before we can check if we're given any bad ones.
     key = "disable"
