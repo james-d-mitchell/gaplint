@@ -7,7 +7,7 @@ from setuptools import find_packages, setup
 with open("README.rst", "r", encoding="utf8") as f:
     setup(
         name="gaplint",
-        version="1.3.1",
+        version="1.3.2",
         python_requires=">3.9.0",
         py_modules=["gaplint"],
         url="https://github.com/james-d-mitchell/gaplint",
@@ -15,7 +15,12 @@ with open("README.rst", "r", encoding="utf8") as f:
         author="James D. Mitchell, Simon Tollman",
         author_email="jdm3@st-andrews.ac.uk, skt4@st-andrews.ac.uk",
         description=("A linter for GAP (https://www.gap-system.org/)."),
-        long_description=f.read(),
+        long_description="""``gaplint`` automatically checks the format of a
+        GAP file according to some conventions, which are somewhat
+        configurable. It prints the nature and location of instances of any
+        instances of violations of these conventions (see the README.rst for
+        more details).
+        """,
         packages=find_packages(exclude=["tests"]),
         include_package_data=True,
         zip_safe=False,
