@@ -31,6 +31,12 @@ To disable all rules for a particular file you can add the line::
 to the start of the file before any lines that contain any code. All
 rules are enabled by default.
 
+.. image:: all-rules.png
+  :width: 750
+  :alt: A list of all gaplint rules.
+
+You can obtain an explanation of a rule at the command line using the
+``--explain`` flag, i.e. ``--explain W000,W001``.  
 
 Configuration
 =============
@@ -42,20 +48,24 @@ configuration file ``.gaplint.yml``.
 
 **Configuration keywords:**
 
--  ``columns``: maximum number of characters per line. *Defaults to 80*.
--  ``max-warnings``: maximum number of warnings before ``gaplint``
-   aborts. *Defaults to 1000*.
--  ``indentation``: minimum indentation of nested statements. *Defaults
-   to 2*.
--  ``disable``: rules can be disabled using their name or code.
-   *Defaults to no rules disabled*.
+- ``columns``: maximum number of characters per line. *Defaults to 80*.
+- ``disable``: rules can be disabled using their name or code.
+  *Defaults to no rules disabled*.
+- ``dupl-func-min-len``: only warn about duplicate functions with at least
+  this many lines. *Defaults to 4*.
+- ``enable``: rules can be enabled using their name or code. *Defaults to all
+   rules enabled*.
+- ``indentation``: minimum indentation of nested statements. *Defaults
+  to 2*.
+- ``max-warnings``: maximum number of warnings before ``gaplint``
+  aborts. *Defaults to 1000*.
 
 A list of all of the rules that ``gaplint`` can apply is given below.
 
 You can alter the configuration in various places, the order of
-precedence of these is governed by a hierarchy described below. A
-preference given somewhere higher on the hierarchy than another will be
-given precedence. Disabled rules accumulate through the hierarchy.
+precedence of these is governed by the hierarchy described below. A
+preference given somewhere higher in the hierarchy will be
+given precedence. 
 
 Configuration
 =============

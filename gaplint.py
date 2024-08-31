@@ -67,16 +67,16 @@ _GAP_KEYWORDS = {
 }
 
 _DEFAULT_CONFIG = {
-    "max-warnings": 1000,
     "columns": 80,
     "disable": set(),
     "dupl-func-min-len": 4,
     "enable": "all",
+    "explain": "",
+    "files": [],
     "indentation": 2,
+    "max-warnings": 1000,
     "silent": False,
     "verbose": False,
-    "files": [],
-    "explain": "",
 }
 
 _GLOB_CONFIG = {}
@@ -413,7 +413,7 @@ class ReplaceBetweenDelimiters(Rule):
     This rule does not return any warnings.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self, name: str, code: str, desc: str, delim1: str, delim2: str
     ) -> None:
         Rule.__init__(self, name, code, desc)
@@ -637,7 +637,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     def _check_assigned_but_never_used_lvars(
         self, ass_lvars, fname, linenum, nr_warnings
     ):
-        if len(ass_lvars) != 0:
+        if len(ass_lvars) != 0 and not _is_rule_suppressed(
+            fname, linenum + 1, self
+        ):
             ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
             msg = f"Variables assigned but never used: {', '.join(ass_lvars)}"
             _warn(self, fname, linenum, msg)
@@ -645,7 +647,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         return nr_warnings
 
     def _check_unused_lvars(self, decl_lvars, fname, linenum, nr_warnings):
-        if len(decl_lvars) != 0:
+        if len(decl_lvars) != 0 and not _is_rule_suppressed(
+            fname, linenum + 1, self
+        ):
             decl_lvars = list(decl_lvars)
             msg = f"Unused local variables: {', '.join(decl_lvars)}"
             _warn(self, fname, linenum, msg)
@@ -656,8 +660,6 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         func_args = [arg for arg in func_args if arg != "_"]
         if len(func_args) != 0:
             if not _is_rule_suppressed(
-                fname, linenum + 1, self
-            ) and not _is_rule_suppressed(
                 fname, linenum + 1, AnalyseLVars.SubRules["W046"]
             ):
                 msg = f"Unused function arguments: {', '.join(func_args)}"
@@ -670,8 +672,6 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         limit = _GLOB_CONFIG["dupl-func-min-len"]
         if num_func_lines + 1 > limit:
             if not _is_rule_suppressed(
-                fname, linenum + 1, self
-            ) and not _is_rule_suppressed(
                 fname, linenum + 1, AnalyseLVars.SubRules["W047"]
             ):
                 func_body = re.sub(r"\n", "", func_body)
@@ -682,8 +682,8 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                         fname,
                         linenum,
                         f"Duplicate function with {num_func_lines + 1} > {limit}"
-                        + ' lines (from "function" to "end" inclusive), previously '
-                        + f"defined at {self._func_position[index]}!",
+                        ' lines (from "function" to "end" inclusive), previously '
+                        f"defined at {self._func_position[index]}!",
                     )
                     nr_warnings += 1
                 except ValueError:
@@ -705,13 +705,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             ("false", "W037"),
             ("fail", "W038"),
         ):
-            if (
-                not _is_rule_suppressed(fname, linenum + 1, self)
-                and not _is_rule_suppressed(
-                    fname, linenum + 1, all_rules()[code]
-                )
-                and re.search(rf"^\s*\breturn\b\s+\b{bval}\b", line)
-            ):
+            if not _is_rule_suppressed(
+                fname, linenum + 1, all_rules()[code]
+            ) and re.search(rf"^\s*\breturn\b\s+\b{bval}\b", line):
                 _warn(
                     all_rules()[code],
                     fname,
@@ -721,7 +717,6 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 nr_warnings += 1
         if (
             len(func_args_all) > 1
-            and not _is_rule_suppressed(fname, linenum + 1, self)
             and not _is_rule_suppressed(fname, linenum + 1, all_rules()["W039"])
             and re.search(rf"^\s*\breturn\b\s+\b{func_args_all[0]}\s*;", line)
         ):
@@ -734,7 +729,6 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             nr_warnings += 1
         if (
             len(func_args_all) == 1
-            and not _is_rule_suppressed(fname, linenum + 1, self)
             and not _is_rule_suppressed(
                 fname, linenum + 1, AnalyseLVars.SubRules["W040"]
             )
@@ -813,7 +807,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                     self,
                     fname,
                     lines.count("\n", 0, pos),
-                    "Name used for two local variables: " + var,
+                    f"Name used for two local variables: {var}",
                 )
             elif var in args:
                 _error(
@@ -950,7 +944,7 @@ class WhitespaceOperator(WarnRegexLine):
     operator is incorrect.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         name: str,
         code: str,
@@ -1451,7 +1445,7 @@ def __normalize_disabled_rules(
         sys.stderr.write(
             f"ERROR: found both configuration values "
             f"'enable' and 'disable' {where}, use one or the other, "
-            + "not both\n"
+            "not both\n"
         )
         sys.exit(1)
 
@@ -2201,13 +2195,17 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
 
         nr_warnings = 0
         for rule in _FILE_RULES:
-            if not _is_rule_suppressed(fname, 0, rule):
+            # W000 is special and handles its own suppressions, since it is
+            # really several rules in one.
+            if rule.code == "W000" or not _is_rule_suppressed(fname, 0, rule):
                 nr_warnings, lines = rule(fname, lines, nr_warnings)
                 too_many_warnings(nr_warnings + total_num_warnings)
         lines = lines.split("\n")
         for linenum in range(len(lines)):
             for rule in _LINE_RULES:
-                if not _is_rule_suppressed(fname, linenum + 1, rule):
+                if rule.code == "W000" or not _is_rule_suppressed(
+                    fname, linenum + 1, rule
+                ):
                     nr_warnings, lines = rule(
                         fname, lines, linenum, nr_warnings
                     )
