@@ -1,28 +1,26 @@
 """
 A rudimentary linter for GAP (https://www.gap-system.org/) code.
 """
+
 from setuptools import find_packages, setup
 
 with open("README.rst", "r", encoding="utf8") as f:
     setup(
         name="gaplint",
         version="1.2.1",
-        python_requires=">3.8.0",
+        python_requires=">3.9.0",
         py_modules=["gaplint"],
         url="https://github.com/james-d-mitchell/gaplint",
         license="GPL3",
         author="James D. Mitchell, Simon Tollman",
         author_email="jdm3@st-andrews.ac.uk, skt4@st-andrews.ac.uk",
-        description=(
-            "A rudimentary linter for GAP "
-            + "(https://www.gap-system.org/) code."
-        ),
+        description=("A linter for GAP (https://www.gap-system.org/)."),
         long_description=f.read(),
         packages=find_packages(exclude=["tests"]),
         include_package_data=True,
         zip_safe=False,
         platforms="any",
-        install_requires=["argparse", "pyyaml"],
+        install_requires=["argparse", "pyyaml", "rich"],
         entry_points={
             "console_scripts": [
                 "gaplint = gaplint:main",
