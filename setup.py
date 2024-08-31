@@ -8,7 +8,7 @@ with open("README.rst", "r", encoding="utf8") as f:
     setup(
         name="gaplint",
         version="1.2.1",
-        python_requires=">3.8.0",
+        python_requires=">3.9.0",
         py_modules=["gaplint"],
         url="https://github.com/james-d-mitchell/gaplint",
         license="GPL3",
