@@ -53,8 +53,7 @@ configuration file ``.gaplint.yml``.
   *Defaults to no rules disabled*.
 - ``dupl-func-min-len``: only warn about duplicate functions with at least
   this many lines. *Defaults to 4*.
-- ``enable``: rules can be enabled using their name or code. *Defaults to all
-   rules enabled*.
+- ``enable``: rules can be enabled using their name or code. *Defaults to all rules enabled*.
 - ``indentation``: minimum indentation of nested statements. *Defaults
   to 2*.
 - ``max-warnings``: maximum number of warnings before ``gaplint``
