@@ -94,6 +94,7 @@ _DEFAULT_CONFIG = {
     "max-warnings": 1000,
     "silent": False,
     "verbose": False,
+    "column-range": False,
 }
 
 _GLOB_CONFIG = {}
@@ -156,14 +157,25 @@ def _is_in_string(lines: str, pos: int) -> bool:
 ###############################################################################
 
 
-def _warn_or_error(rule, fname: str, linenum: int, msg: str) -> None:
+def _warn_or_error(
+    rule,
+    fname: str,
+    linenum: int,
+    msg: str,
+    column_range: Union[Tuple[int, int], None] = None,
+) -> None:
     if not _SILENT:
         assert isinstance(fname, str)
         assert isinstance(linenum, int)
         assert isinstance(msg, str)
-        sys.stderr.write(
-            f"{fname}:{linenum + 1}: {msg} [{rule.code}/{rule.name}]\n"
-        )
+        if _COLUMN_RANGE and column_range is not None:
+            sys.stderr.write(
+                f"{fname}:{linenum + 1}:{column_range[0]+1}-{column_range[1]+1}: {msg} [{rule.code}/{rule.name}]\n"
+            )
+        else:
+            sys.stderr.write(
+                f"{fname}:{linenum + 1}: {msg} [{rule.code}/{rule.name}]\n"
+            )
         _DIAGNOSTICS.append(
             Diagnostic(
                 code=rule.code,
@@ -175,12 +187,24 @@ def _warn_or_error(rule, fname: str, linenum: int, msg: str) -> None:
         )
 
 
-def _warn(rule, fname: str, linenum: int, msg: str) -> None:
-    _warn_or_error(rule, fname, linenum, msg)
+def _warn(
+    rule,
+    fname: str,
+    linenum: int,
+    msg: str,
+    column_range: Union[Tuple[int, int], None] = None,
+) -> None:
+    _warn_or_error(rule, fname, linenum, msg, column_range)
 
 
-def _error(rule, fname: str, linenum: int, msg: str) -> None:
-    _warn_or_error(rule, fname, linenum, msg)
+def _error(
+    rule,
+    fname: str,
+    linenum: int,
+    msg: str,
+    column_range: Union[Tuple[int, int], None] = None,
+) -> None:
+    _warn_or_error(rule, fname, linenum, msg, column_range)
     sys.stderr.write("Aborting!\n")
     sys.exit(1)
 
@@ -286,7 +310,7 @@ class WarnRegexBase(Rule):
         self._exceptions = [re.compile(e) for e in exceptions]
         self._skip = skip
 
-    def _match(self, line: str, start: int = 0) -> Union[int, None]:
+    def _match(self, line: str, start: int = 0) -> Union[Tuple[int, int], None]:
         exception_group = self._exception_group
         it = self._pattern.finditer(line, start)
         for x in it:
@@ -303,7 +327,7 @@ class WarnRegexBase(Rule):
                     if exception:
                         break
             if not exception:
-                return x.start()
+                return (x.start(), x.end())
         return None
 
     def skip(self, fname: str) -> bool:
@@ -354,9 +378,7 @@ class ReplaceAnnoyUTF8Chars(Rule):
             "\xcc\xb1": "",  # modifier - under line
         }
 
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
+    def __call__(self, fname: str, lines: str, nr_warnings: int = 0) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -370,9 +392,7 @@ class ReplaceAnnoyUTF8Chars(Rule):
 
         return (
             nr_warnings,
-            re.sub(
-                "(" + "|".join(self._chars.keys()) + ")", replace_chars, lines
-            ),
+            re.sub("(" + "|".join(self._chars.keys()) + ")", replace_chars, lines),
         )
 
 
@@ -381,9 +401,7 @@ class WarnRegexFile(WarnRegexBase):
     A rule that issues a warning if a regex is matched in a file.
     """
 
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
+    def __call__(self, fname: str, lines: str, nr_warnings: int = 0) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -392,11 +410,11 @@ class WarnRegexFile(WarnRegexBase):
 
         match = self._match(lines)
         while match is not None:
-            line_num = lines.count("\n", 0, match)
+            line_num = lines.count("\n", 0, match[0])
             if not _is_rule_suppressed(fname, line_num + 1, self):
-                _warn(self, fname, line_num, self._warning_msg)
+                _warn(self, fname, line_num, self._warning_msg, match)
                 nr_warnings += 1
-            match = self._match(lines, match + len(self._pattern.pattern))
+            match = self._match(lines, match[0] + len(self._pattern.pattern))
         return nr_warnings, lines
 
 
@@ -409,9 +427,7 @@ class ReplaceComments(Rule):
     This rule does not return any warnings.
     """
 
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
+    def __call__(self, fname: str, lines: str, nr_warnings: int = 0) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -464,9 +480,7 @@ class ReplaceBetweenDelimiters(Rule):
             match = delim.search(lines, match.start() + len(delim.pattern))
         return -1 if match is None else match.start()
 
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
+    def __call__(self, fname: str, lines: str, nr_warnings: int = 0) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -505,9 +519,7 @@ class ReplaceOutputTstOrXMLFile(Rule):
         self._eol_p = re.compile(r"($|\n)")
         self._rep_p = re.compile(r"[^\n]")
 
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
+    def __call__(self, fname: str, lines: str, nr_warnings: int = 0) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -674,9 +686,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
     def _check_assigned_but_never_used_lvars(
         self, ass_lvars, fname, linenum, nr_warnings
     ):
-        if len(ass_lvars) != 0 and not _is_rule_suppressed(
-            fname, linenum + 1, self
-        ):
+        if len(ass_lvars) != 0 and not _is_rule_suppressed(fname, linenum + 1, self):
             ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
             msg = f"Variables assigned but never used: {', '.join(sorted(ass_lvars))}"
             _warn(self, fname, linenum, msg)
@@ -684,9 +694,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         return nr_warnings
 
     def _check_unused_lvars(self, decl_lvars, fname, linenum, nr_warnings):
-        if len(decl_lvars) != 0 and not _is_rule_suppressed(
-            fname, linenum + 1, self
-        ):
+        if len(decl_lvars) != 0 and not _is_rule_suppressed(fname, linenum + 1, self):
             decl_lvars = list(decl_lvars)
             msg = f"Unused local variables: {', '.join(sorted(decl_lvars))}"
             _warn(self, fname, linenum, msg)
@@ -699,9 +707,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             if not _is_rule_suppressed(
                 fname, linenum + 1, AnalyseLVars.SubRules["W046"]
             ):
-                msg = (
-                    f"Unused function arguments: {', '.join(sorted(func_args))}"
-                )
+                msg = f"Unused function arguments: {', '.join(sorted(func_args))}"
                 _warn(self.SubRules["W046"], fname, linenum, msg)
                 nr_warnings += 1
         return nr_warnings
@@ -786,9 +792,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self, fname: str, lines: str, pos: int, nr_warnings: int
     ) -> Tuple[int, int]:
         if len(self._declared_lvars) == 0:
-            _error(
-                self, fname, lines.count("\n", 0, pos), "'end' outside function"
-            )
+            _error(self, fname, lines.count("\n", 0, pos), "'end' outside function")
 
         self._depth -= 1
 
@@ -811,18 +815,14 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         nr_warnings = self._check_assigned_but_never_used_lvars(
             ass_lvars, fname, linenum, nr_warnings
         )
-        nr_warnings = self._check_unused_lvars(
-            decl_lvars, fname, linenum, nr_warnings
-        )
+        nr_warnings = self._check_unused_lvars(decl_lvars, fname, linenum, nr_warnings)
         nr_warnings = self._check_unused_func_args(
             func_args, fname, linenum, nr_warnings
         )
 
         func_body = lines[self._func_start_pos[-1] : pos]
 
-        nr_warnings = self._check_dupl_funcs(
-            func_body, fname, linenum, nr_warnings
-        )
+        nr_warnings = self._check_dupl_funcs(func_body, fname, linenum, nr_warnings)
 
         nr_warnings = self._check_for_return_fail_etc(
             func_body, func_args_all, fname, linenum, nr_warnings
@@ -893,9 +893,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             u_lvars |= set(self._use_var_p.findall(lines, pos, end))
         return end, nr_warnings
 
-    def __call__(
-        self, fname: str, lines: str, nr_warnings: int = 0
-    ) -> Tuple[int, str]:
+    def __call__(self, fname: str, lines: str, nr_warnings: int = 0) -> Tuple[int, str]:
         assert isinstance(fname, str)
         assert isinstance(lines, str)
         assert isinstance(nr_warnings, int)
@@ -906,21 +904,15 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         pos = 0
         while pos < len(lines):
             if self._function_p.search(lines, pos, pos + len("function")):
-                pos, nr_warnings = self._start_function(
-                    fname, lines, pos, nr_warnings
-                )
+                pos, nr_warnings = self._start_function(fname, lines, pos, nr_warnings)
             elif self._local_p.search(lines, pos, pos + len("local") + 1):
                 pos, nr_warnings = self._add_declared_lvars(
                     fname, lines, pos + len("local") + 1, nr_warnings
                 )
             elif self._end_p.search(lines, pos, pos + len("end")):
-                pos, nr_warnings = self._end_function(
-                    fname, lines, pos, nr_warnings
-                )
+                pos, nr_warnings = self._end_function(fname, lines, pos, nr_warnings)
             else:
-                pos, nr_warnings = self._find_lvars(
-                    fname, lines, pos, nr_warnings
-                )
+                pos, nr_warnings = self._find_lvars(fname, lines, pos, nr_warnings)
 
         return nr_warnings, orig_lines
 
@@ -977,8 +969,9 @@ class WarnRegexLine(WarnRegexBase):
         assert linenum < len(lines)
         assert isinstance(nr_warnings, int)
         if not self.skip(fname):
-            if self._match(lines[linenum]) is not None:
-                _warn(self, fname, linenum, self._warning_msg)
+            match = self._match(lines[linenum])
+            if match is not None:
+                _warn(self, fname, linenum, self._warning_msg, match)
                 return nr_warnings + 1, lines
         return nr_warnings, lines
 
@@ -1005,9 +998,7 @@ class WhitespaceOperator(WarnRegexLine):
         gop = "(" + op + ")"
         pattern = rf"(\S{gop}|{gop}\S|\s{{2,}}{gop}|{gop}\s{{2,}})"
         self._pattern = re.compile(pattern)
-        self._warning_msg = "Wrong whitespace around operator " + op.replace(
-            "\\", ""
-        )
+        self._warning_msg = "Wrong whitespace around operator " + op.replace("\\", "")
         exceptions = [e.replace(op, "(" + op + ")") for e in exceptions]
         self._exceptions = [re.compile(e) for e in exceptions]
         self._exception_group = op.replace("\\", "")
@@ -1055,7 +1046,13 @@ class UnalignedPatterns(Rule):
         if col is not None and self._last_line_col is not None:
             group = self._group
             if col.start(group) != self._last_line_col.start(group):
-                _warn(self, fname, linenum, self._msg)
+                _warn(
+                    self,
+                    fname,
+                    linenum,
+                    self._msg,
+                    (col.start(group), col.end(group)),
+                )
                 return nr_warnings + 1, lines
         self._last_line_col = col
         return nr_warnings, lines
@@ -1127,7 +1124,13 @@ class Indentation(Rule):
 
         indent = self._get_indent_level(lines[linenum])
         if indent < self._expected:
-            _warn(self, fname, linenum, self._msg % (indent, self._expected))
+            _warn(
+                self,
+                fname,
+                linenum,
+                self._msg % (indent, self._expected),
+                (0, indent),
+            )
             nr_warnings += 1
 
         for pair in self._after:
@@ -1170,33 +1173,23 @@ def __explain(args: Dict[str, Any]) -> None:
     args["explain"] = args["explain"].split(",")
     args["explain"].sort()
     if len(args["explain"]) == 1 and args["explain"][0] == "all":
-        args["explain"] = [
-            x for x in all_rules().keys() if not x.startswith("M")
-        ]
+        args["explain"] = [x for x in all_rules().keys() if not x.startswith("M")]
 
     rows = []
     for name_or_code in args["explain"]:
         try:
             rule = next(
-                x
-                for x in all_rules().values()
-                if name_or_code in (x.code, x.name)
+                x for x in all_rules().values() if name_or_code in (x.code, x.name)
             )
             rows.append((rule.code, rule.name, rule.desc))
         except StopIteration:
-            _info_action(
-                f'CANNOT EXPLAIN invalid rule name or code "{name_or_code}"'
-            )
+            _info_action(f'CANNOT EXPLAIN invalid rule name or code "{name_or_code}"')
     rows.sort()
     rows = list(dict.fromkeys(rows))
     if len(rows) > 0:
-        table = Table(
-            title="gaplint rules", show_lines=True, width=90, min_width=80
-        )
+        table = Table(title="gaplint rules", show_lines=True, width=90, min_width=80)
 
-        table.add_column(
-            "Code", justify="left", style="bright_red", no_wrap=True
-        )
+        table.add_column("Code", justify="left", style="bright_red", no_wrap=True)
         table.add_column("Name", justify="left", style="bright_green")
         table.add_column(
             "Description", justify="left", style="bright_blue", no_wrap=False
@@ -1275,6 +1268,15 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         type=int,
         default=None,
         help=f"indentation of nested statements (default: {default})",
+    )
+
+    default = _DEFAULT_CONFIG["column-range"]
+    parser.add_argument(
+        "--column-range",
+        dest="column_range",
+        action="store_true",
+        default=default,
+        help=f"display a column range when reporting (default: {default})",
     )
 
     default = _DEFAULT_CONFIG["silent"]
@@ -1373,11 +1375,8 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
         expected = type(_DEFAULT_CONFIG[key])
         # val is None means that it wasn't specified
         if val is not None and (
-            (
-                not (
-                    isinstance(val, expected)
-                    or (key == "enable" and isinstance(val, set))
-                )
+            not (
+                isinstance(val, expected) or (key == "enable" and isinstance(val, set))
             )
         ):
             _info_action(
@@ -1477,9 +1476,7 @@ def __merge_args(  # pylint: disable=too-many-branches
     return args
 
 
-def __normalize_disabled_rules(
-    args: Dict[str, Any], where: str
-) -> Dict[str, Any]:
+def __normalize_disabled_rules(args: Dict[str, Any], where: str) -> Dict[str, Any]:
     # Rules can only be enabled globally, at the command line, as a keyword
     # argument when calling gaplint as a function in python, or in a config
     # file.
@@ -1554,11 +1551,12 @@ def __normalize_files(args: Dict[str, Any]):
 def __init_globals(
     args: Dict[str, Any],
 ) -> None:
-    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS  # pylint: disable=global-statement
+    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS, _COLUMN_RANGE  # pylint: disable=global-statement
 
     # init global config values
     _SILENT = args["silent"]
     _VERBOSE = args["verbose"]
+    _COLUMN_RANGE = args["column-range"]
     _GLOB_CONFIG = args
     # Clear the suppressions in case we are running as a module (i.e. in the
     # tests)
@@ -1688,9 +1686,7 @@ def __init_rules() -> None:
             "Warns if there is a line which is longer than the "
             "configured maximum (defaults to [code]80[/code]).",
         ),
-        Indentation(
-            "indentation", "W003", "Warns if a line is under indented."
-        ),
+        Indentation("indentation", "W003", "Warns if a line is under indented."),
         UnalignedPatterns(
             "align-assignments",
             "W004",
@@ -1975,8 +1971,7 @@ def __init_rules() -> None:
         WarnRegexLine(
             "use-not-eq",
             "W042",
-            "Warns to use [code]x <> y[/code] instead of "
-            "[code]not x = y[/code].",
+            "Warns to use [code]x <> y[/code] instead of " "[code]not x = y[/code].",
             r"\bif\s+not\s+\w+\s*=",
             'Use "x <> y" instead of "not x = y"',
         ),
@@ -2013,9 +2008,7 @@ def __can_disable_rule_name_or_code(name_or_code: str, where: str) -> bool:
     for rule in all_rules().values():
         if name_or_code in (rule.name, rule.code):
             if rule.code[0] == "M":
-                _info_action(
-                    f'IGNORING cannot disable rule "{name_or_code}" {where}'
-                )
+                _info_action(f'IGNORING cannot disable rule "{name_or_code}" {where}')
                 return False
             return True
     _info_action(f'IGNORING invalid rule name or code "{name_or_code}" {where}')
@@ -2032,9 +2025,7 @@ def __add_file_suppressions(
 
     for name_or_code in names_or_codes:
         assert isinstance(name_or_code, str)
-        if __can_disable_rule_name_or_code(
-            name_or_code, f"at {fname}:{linenum + 1}"
-        ):
+        if __can_disable_rule_name_or_code(name_or_code, f"at {fname}:{linenum + 1}"):
             if fname not in _FILE_SUPPRESSIONS:
                 _FILE_SUPPRESSIONS[fname] = {}
             code = Rule.to_code(name_or_code)
@@ -2051,9 +2042,7 @@ def __add_line_suppressions(
 
     for name_or_code in names_or_codes:
         assert isinstance(name_or_code, str)
-        if __can_disable_rule_name_or_code(
-            name_or_code, f"at {fname}:{linenum}"
-        ):
+        if __can_disable_rule_name_or_code(name_or_code, f"at {fname}:{linenum}"):
             if fname not in _LINE_SUPPRESSIONS:
                 _LINE_SUPPRESSIONS[fname] = {}
             if linenum + 1 not in _LINE_SUPPRESSIONS[fname]:
@@ -2097,9 +2086,7 @@ def __init_file_and_line_suppressions(args: Dict[str, Any]) -> None:
             else:
                 match = next_line_p.search(lines[linenum])
                 if match:
-                    names_or_codes = rules_p.findall(
-                        lines[linenum], match.end()
-                    )
+                    names_or_codes = rules_p.findall(lines[linenum], match.end())
                     __add_line_suppressions(names_or_codes, fname, linenum)
             linenum += 1
 
@@ -2118,8 +2105,7 @@ def _is_rule_suppressed(fname: str, linenum: int, rule: Rule) -> bool:
     if "all" in _GLOB_SUPPRESSIONS or rule.code in _GLOB_SUPPRESSIONS:
         return True
     if fname in _FILE_SUPPRESSIONS and (
-        "all" in _FILE_SUPPRESSIONS[fname]
-        or rule.code in _FILE_SUPPRESSIONS[fname]
+        "all" in _FILE_SUPPRESSIONS[fname] or rule.code in _FILE_SUPPRESSIONS[fname]
     ):
         return True
 
@@ -2143,14 +2129,10 @@ def __verbose_msg_per_file(args: Dict[str, Any], fname: str, i: int) -> None:
     prefix_len = max(len(x) for x in args["files"]) + 2
     index_str = str(i + 1).rjust(num_digits)
 
-    _info_verbose(
-        f"Linting {fname.ljust(prefix_len, '.')}.[{index_str}/{num_files}]"
-    )
+    _info_verbose(f"Linting {fname.ljust(prefix_len, '.')}.[{index_str}/{num_files}]")
 
 
-def __at_exit(
-    args: Dict[str, Any], total_num_warnings: int, start_time: float
-) -> None:
+def __at_exit(args: Dict[str, Any], total_num_warnings: int, start_time: float) -> None:
     if not _SILENT:
         t = time.process_time() - start_time
         _info_action(
@@ -2235,9 +2217,7 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
 
     n = len(Rule.all_suppressible_codes())
     m = len(args["disable"])
-    _info_action(
-        f"Analysing {len(args['files'])} files with {n - m} / {n} rules!"
-    )
+    _info_action(f"Analysing {len(args['files'])} files with {n - m} / {n} rules!")
 
     for i, fname in enumerate(args["files"]):
         __verbose_msg_per_file(args, fname, i)
@@ -2261,9 +2241,7 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
                 if rule.code == "W000" or not _is_rule_suppressed(
                     fname, linenum + 1, rule
                 ):
-                    nr_warnings, lines = rule(
-                        fname, lines, linenum, nr_warnings
-                    )
+                    nr_warnings, lines = rule(fname, lines, linenum, nr_warnings)
         too_many_warnings(nr_warnings + total_num_warnings)
         for rule in _LINE_RULES:
             rule.reset()
