@@ -352,10 +352,9 @@ def test_enable_and_disable():
     with pytest.raises(SystemExit) as e:
         run_gaplint(files=["test1.g"], enable="", disable="")
     assert e.value.code == 1
-    # TODO should fail but doesn't
-    # with pytest.raises(SystemExit) as e:
-    #     run_gaplint(files=["test1.g"], enable=None, disable=None)
-    # assert e.value.code == 1
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], enable=None, disable=None)
+    assert e.value.code == 1
     with pytest.raises(SystemExit) as e:
         run_gaplint(files=["test1.g"], enable="W047")
     assert e.value.code == 1
