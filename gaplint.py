@@ -1146,10 +1146,12 @@ def __explain(args: Dict[str, Any]) -> None:
             title="gaplint rules", show_lines=True, width=90, min_width=80
         )
 
-        table.add_column("Code", justify="left", style="#FF1053", no_wrap=True)
-        table.add_column("Name", justify="left", style="#A1E5AB")
         table.add_column(
-            "Description", justify="left", style="#66C7F4", no_wrap=False
+            "Code", justify="left", style="bright_red", no_wrap=True
+        )
+        table.add_column("Name", justify="left", style="bright_green")
+        table.add_column(
+            "Description", justify="left", style="bright_blue", no_wrap=False
         )
         for code, name, desc in rows:
             table.add_row(code, name, desc)
