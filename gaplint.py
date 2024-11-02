@@ -2158,6 +2158,8 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
         indentation (int):    indentation of nested statements (defaults to 2)
         disable (list):       rules (names/codes) to disable (defaults to [])
         enable (list):        rules (names/codes) to enable (defaults to ["all"])
+        column_range (bool):  whether to display column ranges on diagnostics
+                              (defaults to False)
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
     """
