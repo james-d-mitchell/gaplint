@@ -488,15 +488,24 @@ class ReplaceOutputTstOrXMLFile(Rule):
             for sol in self._sol_p.finditer(lines):
                 # Replace everything except '\n' with '@'
                 out += re.sub(self._rep_p, "@", lines[eol : sol.start() + 1])
-                # FIXME check if search returns None, if so, then I guess do
-                # nothing?
-                eol = self._eol_p.search(lines, sol.end()).end()
+                eol = self._eol_p.search(lines, sol.end())
+                if eol is None:
+                    # Found a start of line marker without a corresponding end
+                    # of line marker, i.e. no newline or end of line marker.
+                    # This should not be possible, unless the file is somehow
+                    # corrupt. Either way we just quietly skip the line and
+                    # hope nothing bad happens.
+                    continue
+                eol = eol.end()
+
                 out += lines[sol.end() : eol]
                 while eol + 1 < len(lines) and lines[eol] == ">":
                     start = eol + 2
-                    # FIXME check if search returns None, if so, then I guess do
-                    # nothing?
-                    eol = self._eol_p.search(lines, start).end()
+                    eol = self._eol_p.search(lines, start)
+                    if eol is None:
+                        # See above comment.
+                        break
+                    eol = eol.end()
                     out += lines[start:eol]
             return nr_warnings, out
         return nr_warnings, lines
@@ -1030,15 +1039,15 @@ class Indentation(Rule):
         self._expected = 0
         self._indent = re.compile(r"^(\s*)\S")
         self._blank = re.compile(r"^\s*$")
-        self._before = None  # TODO change to empty list to fix warnings below
-        self._after = None  # TODO same a prev. line
+        self._before = []
+        self._after = []
         self._msg = "Bad indentation: found %d but expected at least %d"
 
     # Really initialize outside __init__ because rules are instanstiated
     # **before** __GLOB_CONFIG is initialised.
     def __init_real(self):
-        if self._before is None:
-            assert self._after is None
+        if len(self._before) == 0:
+            assert len(self._after) == 0
             ind = _GLOB_CONFIG["indentation"]
             self._before = [
                 (re.compile(r"(\W|^)(elif|else)(\W|$)"), -ind),
@@ -1323,7 +1332,7 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
     # check that the values have the correct type
     for key, val in args.items():
         expected = type(_DEFAULT_CONFIG[key])
-        # val is None means that it wasn't speficied
+        # val is None means that it wasn't specified
         if val is not None and (
             (
                 not (
