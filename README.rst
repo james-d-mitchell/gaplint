@@ -1,3 +1,8 @@
+.. image:: logo/logo.png
+  :width: 256
+  :alt: The gaplint logo, an image of a piece of lint with the word "GAP"
+   written above it and "lint" within it.
+
 *********************************************************
 README - gaplint - by James D. Mitchell and Simon Tollman
 *********************************************************
