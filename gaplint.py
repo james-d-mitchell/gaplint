@@ -16,11 +16,24 @@ from copy import deepcopy
 from importlib.metadata import version
 from os import listdir
 from os.path import abspath, exists, isdir, isfile, join
-from typing import Any, Callable, Dict, List, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Set, Tuple, Union, NamedTuple
 
 from rich.console import Console
 from rich.table import Table
 import yaml
+
+###############################################################################
+# Utility
+###############################################################################
+
+
+class Diagnostic(NamedTuple):
+    code: str
+    name: str
+    line: int
+    message: str
+    filename: str
+
 
 ###############################################################################
 # Globals
@@ -89,6 +102,8 @@ _FILE_RULES = []
 
 _ESCAPE_PATTERN = re.compile(r"(^\\(\\\\)*[^\\]+.*$|^\\(\\\\)*$)")
 
+_DIAGNOSTICS = []
+
 ###############################################################################
 # Strings helpers
 ###############################################################################
@@ -144,6 +159,15 @@ def _warn_or_error(rule, fname: str, linenum: int, msg: str) -> None:
         assert isinstance(msg, str)
         sys.stderr.write(
             f"{fname}:{linenum + 1}: {msg} [{rule.code}/{rule.name}]\n"
+        )
+        _DIAGNOSTICS.append(
+            Diagnostic(
+                code=rule.code,
+                name=rule.name,
+                line=linenum + 1,
+                message=msg,
+                filename=fname,
+            )
         )
 
 
@@ -650,7 +674,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             fname, linenum + 1, self
         ):
             ass_lvars = [key for key in ass_lvars if key.find(".") == -1]
-            msg = f"Variables assigned but never used: {', '.join(ass_lvars)}"
+            msg = f"Variables assigned but never used: {', '.join(sorted(ass_lvars))}"
             _warn(self, fname, linenum, msg)
             nr_warnings += 1
         return nr_warnings
@@ -660,7 +684,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             fname, linenum + 1, self
         ):
             decl_lvars = list(decl_lvars)
-            msg = f"Unused local variables: {', '.join(decl_lvars)}"
+            msg = f"Unused local variables: {', '.join(sorted(decl_lvars))}"
             _warn(self, fname, linenum, msg)
             nr_warnings += 1
         return nr_warnings
@@ -671,7 +695,9 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             if not _is_rule_suppressed(
                 fname, linenum + 1, AnalyseLVars.SubRules["W046"]
             ):
-                msg = f"Unused function arguments: {', '.join(func_args)}"
+                msg = (
+                    f"Unused function arguments: {', '.join(sorted(func_args))}"
+                )
                 _warn(self.SubRules["W046"], fname, linenum, msg)
                 nr_warnings += 1
         return nr_warnings
@@ -2141,6 +2167,9 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
 
     start_time = time.process_time()
     total_num_warnings = 0
+
+    # Clear diagnostics to prevent accumulation
+    _DIAGNOSTICS.clear()
 
     if __debug__:
         _info_verbose("Debug on . . .")
