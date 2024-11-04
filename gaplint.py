@@ -45,6 +45,7 @@ class Diagnostic:
 
 _VERBOSE = False
 _SILENT = False
+_COLUMN_RANGE = False
 _GAP_KEYWORDS = {
     "and",
     "atomic",
@@ -170,7 +171,8 @@ def _warn_or_error(
         assert isinstance(msg, str)
         if _COLUMN_RANGE and column_range is not None:
             sys.stderr.write(
-                f"{fname}:{linenum + 1}:{column_range[0]+1}-{column_range[1]+1}: {msg} [{rule.code}/{rule.name}]\n"
+                f"{fname}:{linenum + 1}:{column_range[0]+1}-{column_range[1]+1}:"
+                f" {msg} [{rule.code}/{rule.name}]\n"
             )
         else:
             sys.stderr.write(
