@@ -236,7 +236,7 @@ class WarnRegexBase(Rule):
     """
 
     # TODO use keyword args
-    def __init__(  # pylint: disable=too-many-arguments, dangerous-default-value
+    def __init__(  # pylint: disable=too-many-arguments, too-many-positional-arguments, dangerous-default-value
         self,
         name: str,
         code: str,
@@ -413,7 +413,7 @@ class ReplaceBetweenDelimiters(Rule):
     This rule does not return any warnings.
     """
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self, name: str, code: str, desc: str, delim1: str, delim2: str
     ) -> None:
         Rule.__init__(self, name, code, desc)
@@ -701,7 +701,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         return nr_warnings
 
     # TODO use keyword args?
-    def _check_for_return_fail_etc(  # pylint: disable=too-many-arguments
+    def _check_for_return_fail_etc(  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self, func_body, func_args_all, fname, linenum, nr_warnings
     ):
         num_func_lines = func_body.count("\n")
@@ -953,7 +953,7 @@ class WhitespaceOperator(WarnRegexLine):
     operator is incorrect.
     """
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self,
         name: str,
         code: str,
@@ -984,7 +984,7 @@ class UnalignedPatterns(Rule):
     """
 
     # TODO use keyword args?
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self,
         name: str,
         code: str,
