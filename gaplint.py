@@ -28,6 +28,8 @@ import yaml
 
 
 class Diagnostic(NamedTuple):
+    """A named tuple class to represent diagnostics."""
+
     code: str
     name: str
     line: int
