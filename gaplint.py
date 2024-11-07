@@ -16,7 +16,8 @@ from copy import deepcopy
 from importlib.metadata import version
 from os import listdir
 from os.path import abspath, exists, isdir, isfile, join
-from typing import Any, Callable, Dict, List, Set, Tuple, Union, NamedTuple
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
+from dataclasses import dataclass
 
 from rich.console import Console
 from rich.table import Table
@@ -27,8 +28,9 @@ import yaml
 ###############################################################################
 
 
-class Diagnostic(NamedTuple):
-    """A named tuple class to represent diagnostics."""
+@dataclass(frozen=True)
+class Diagnostic:
+    """A diagnostic wrapper class."""
 
     code: str
     name: str
