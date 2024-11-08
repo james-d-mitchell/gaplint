@@ -1973,7 +1973,7 @@ def __init_rules() -> None:
         WarnRegexLine(
             "use-not-eq",
             "W042",
-            "Warns to use [code]x <> y[/code] instead of " "[code]not x = y[/code].",
+            "Warns to use [code]x <> y[/code] instead of [code]not x = y[/code].",
             r"\bif\s+not\s+\w+\s*=",
             'Use "x <> y" instead of "not x = y"',
         ),
