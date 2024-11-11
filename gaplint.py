@@ -29,14 +29,33 @@ import yaml
 
 
 @dataclass(frozen=True)
-class Diagnostic:
-    """A diagnostic wrapper class."""
+class Diagnostic:  # pylint: disable=too-many-instance-attributes
+    """A diagnostic wrapper class.
+
+    Note that the diagnostic line and column numbers are offset by 1 wrt the
+    lines and columns of the document, i.e. line 1 of the document will be line
+    0 in the diagnostic.
+    """
 
     code: str
     name: str
-    line: int
     message: str
     filename: str
+    line: int
+    line_end: Union[int, None] = None
+    column: Union[int, None] = None
+    column_end: Union[int, None] = None
+
+    def __str__(self) -> str:
+        parts = [f"{self.filename}", f"{self.line + 1}"]
+        if self.line_end is not None and self.line != self.line_end:
+            parts[-1] += f"-{self.line_end + 1}"
+        if self.column is not None:
+            parts.append(f"{self.column + 1}")
+            if self.column_end is not None and self.column != self.column_end:
+                parts[-1] += f"-{self.column_end + 1}"
+        parts.append(f" {self.message} [{self.code}/{self.name}]")
+        return ":".join(parts)
 
 
 ###############################################################################
@@ -45,7 +64,7 @@ class Diagnostic:
 
 _VERBOSE = False
 _SILENT = False
-_COLUMN_RANGE = False
+_RANGES = False
 _GAP_KEYWORDS = {
     "and",
     "atomic",
@@ -95,7 +114,7 @@ _DEFAULT_CONFIG = {
     "max-warnings": 1000,
     "silent": False,
     "verbose": False,
-    "column-range": False,
+    "ranges": False,
 }
 
 _GLOB_CONFIG = {}
@@ -153,60 +172,82 @@ def _is_in_string(lines: str, pos: int) -> bool:
     return line.count('"') % 2 == 1 or line.count("'") % 2 == 1
 
 
+# TODO: (reiniscirpons) improve efficiency once lines can be guaranteed to not change
+def _lines_pos_to_line_num(lines: str, pos: int) -> int:
+    return lines.count("\n", 0, pos)
+
+
+def _lines_pos_to_col_num(lines: str, pos: int) -> int:
+    return (
+        pos
+        - max((i for i, c in enumerate(lines[:pos]) if c == "\n"), default=1)
+        - 1
+    )
+
+
 ###############################################################################
 # Info messages
 ###############################################################################
 
 
-def _warn_or_error(
+def _warn_or_error(  # pylint: disable=too-many-arguments, too-many-positional-arguments
     rule,
     fname: str,
     linenum: int,
     msg: str,
-    column_range: Union[Tuple[int, int], None] = None,
+    line_end: Union[int, None] = None,
+    column: Union[int, None] = None,
+    column_end: Union[int, None] = None,
 ) -> None:
     if not _SILENT:
         assert isinstance(fname, str)
         assert isinstance(linenum, int)
         assert isinstance(msg, str)
-        if _COLUMN_RANGE and column_range is not None:
-            sys.stderr.write(
-                f"{fname}:{linenum + 1}:{column_range[0]+1}-{column_range[1]+1}:"
-                f" {msg} [{rule.code}/{rule.name}]\n"
-            )
-        else:
-            sys.stderr.write(
-                f"{fname}:{linenum + 1}: {msg} [{rule.code}/{rule.name}]\n"
-            )
-        _DIAGNOSTICS.append(
-            Diagnostic(
+        if _RANGES:
+            diagnostic = Diagnostic(
                 code=rule.code,
                 name=rule.name,
-                line=linenum + 1,
                 message=msg,
                 filename=fname,
+                line=linenum,
+                line_end=line_end,
+                column=column,
+                column_end=column_end,
             )
-        )
+        else:
+            diagnostic = Diagnostic(
+                code=rule.code,
+                name=rule.name,
+                message=msg,
+                filename=fname,
+                line=linenum,
+            )
+        sys.stderr.write(str(diagnostic) + "\n")
+        _DIAGNOSTICS.append(diagnostic)
 
 
-def _warn(
+def _warn(  # pylint: disable=too-many-arguments, too-many-positional-arguments
     rule,
     fname: str,
     linenum: int,
     msg: str,
-    column_range: Union[Tuple[int, int], None] = None,
+    line_end: Union[int, None] = None,
+    column: Union[int, None] = None,
+    column_end: Union[int, None] = None,
 ) -> None:
-    _warn_or_error(rule, fname, linenum, msg, column_range)
+    _warn_or_error(rule, fname, linenum, msg, line_end, column, column_end)
 
 
-def _error(
+def _error(  # pylint: disable=too-many-arguments, too-many-positional-arguments
     rule,
     fname: str,
     linenum: int,
     msg: str,
-    column_range: Union[Tuple[int, int], None] = None,
+    line_end: Union[int, None] = None,
+    column: Union[int, None] = None,
+    column_end: Union[int, None] = None,
 ) -> None:
-    _warn_or_error(rule, fname, linenum, msg, column_range)
+    _warn_or_error(rule, fname, linenum, msg, line_end, column, column_end)
     sys.stderr.write("Aborting!\n")
     sys.exit(1)
 
@@ -412,9 +453,20 @@ class WarnRegexFile(WarnRegexBase):
 
         match = self._match(lines)
         while match is not None:
-            line_num = lines.count("\n", 0, match[0])
+            line_num = _lines_pos_to_line_num(lines, match[0])
+            col_num = _lines_pos_to_col_num(lines, match[0])
+            line_end_num = _lines_pos_to_line_num(lines, match[1])
+            col_end_num = _lines_pos_to_col_num(lines, match[1])
             if not _is_rule_suppressed(fname, line_num + 1, self):
-                _warn(self, fname, line_num, self._warning_msg, match)
+                _warn(
+                    self,
+                    fname,
+                    line_num,
+                    self._warning_msg,
+                    line_end=line_end_num,
+                    column=col_num,
+                    column_end=col_end_num,
+                )
                 nr_warnings += 1
             match = self._match(lines, match[0] + len(self._pattern.pattern))
         return nr_warnings, lines
@@ -494,7 +546,7 @@ class ReplaceBetweenDelimiters(Rule):
                 _error(
                     self,
                     fname,
-                    lines.count("\n", 0, start),
+                    _lines_pos_to_line_num(lines, start),
                     f"Unmatched {self._delims[0].pattern}",
                 )
             end += len(self._delims[1].pattern)
@@ -662,7 +714,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 _error(
                     self,
                     fname,
-                    lines.count("\n", 0, pos),
+                    _lines_pos_to_line_num(lines, pos),
                     f'Invalid syntax: "{lines[start:end]}"',
                 )
             else:
@@ -671,14 +723,14 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 _error(
                     self,
                     fname,
-                    lines.count("\n", 0, pos),
+                    _lines_pos_to_line_num(lines, pos),
                     f"Duplicate function argument: {var}",
                 )
             elif var in _GAP_KEYWORDS:
                 _error(
                     self,
                     fname,
-                    lines.count("\n", 0, pos),
+                    _lines_pos_to_line_num(lines, pos),
                     f"Function argument is keyword: {var}",
                 )
             else:
@@ -794,7 +846,12 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self, fname: str, lines: str, pos: int, nr_warnings: int
     ) -> Tuple[int, int]:
         if len(self._declared_lvars) == 0:
-            _error(self, fname, lines.count("\n", 0, pos), "'end' outside function")
+            _error(
+                self,
+                fname,
+                _lines_pos_to_line_num(lines, pos),
+                "'end' outside function",
+            )
 
         self._depth -= 1
 
@@ -812,7 +869,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         decl_lvars -= use_lvars  # difference
         func_args = set(func_args_all) - use_lvars  # difference
 
-        linenum = lines.count("\n", 0, self._func_start_pos[-1])
+        linenum = _lines_pos_to_line_num(lines, self._func_start_pos[-1])
 
         nr_warnings = self._check_assigned_but_never_used_lvars(
             ass_lvars, fname, linenum, nr_warnings
@@ -847,21 +904,21 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
                 _error(
                     self,
                     fname,
-                    lines.count("\n", 0, pos),
+                    _lines_pos_to_line_num(lines, pos),
                     f"Name used for two local variables: {var}",
                 )
             elif var in args:
                 _error(
                     self,
                     fname,
-                    lines.count("\n", 0, pos),
+                    _lines_pos_to_line_num(lines, pos),
                     f"Name used for function argument and local variable: {var}",
                 )
             elif var in _GAP_KEYWORDS:
                 _error(
                     self,
                     fname,
-                    lines.count("\n", 0, pos),
+                    _lines_pos_to_line_num(lines, pos),
                     f"Local variable is keyword: {var}",
                 )
             else:
@@ -879,7 +936,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
             _error(
                 self,
                 fname,
-                lines.count("\n", 0, pos),
+                _lines_pos_to_line_num(lines, pos),
                 "'function' without 'end'",
             )
 
@@ -973,7 +1030,15 @@ class WarnRegexLine(WarnRegexBase):
         if not self.skip(fname):
             match = self._match(lines[linenum])
             if match is not None:
-                _warn(self, fname, linenum, self._warning_msg, match)
+                _warn(
+                    self,
+                    fname,
+                    linenum,
+                    self._warning_msg,
+                    line_end=linenum,
+                    column=match[0],
+                    column_end=match[1],
+                )
                 return nr_warnings + 1, lines
         return nr_warnings, lines
 
@@ -1053,7 +1118,9 @@ class UnalignedPatterns(Rule):
                     fname,
                     linenum,
                     self._msg,
-                    (col.start(group), col.end(group)),
+                    line_end=linenum,
+                    column=col.start(group),
+                    column_end=col.end(group),
                 )
                 return nr_warnings + 1, lines
         self._last_line_col = col
@@ -1131,7 +1198,9 @@ class Indentation(Rule):
                 fname,
                 linenum,
                 self._msg % (indent, self._expected),
-                (0, indent),
+                line_end=linenum,
+                column=0,
+                column_end=indent,
             )
             nr_warnings += 1
 
@@ -1272,13 +1341,13 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         help=f"indentation of nested statements (default: {default})",
     )
 
-    default = _DEFAULT_CONFIG["column-range"]
+    default = _DEFAULT_CONFIG["ranges"]
     parser.add_argument(
-        "--column-range",
-        dest="column_range",
+        "--ranges",
+        dest="ranges",
         action="store_true",
         default=default,
-        help=f"display a column range when reporting (default: {default})",
+        help=f"display a line and column range when reporting (default: {default})",
     )
 
     default = _DEFAULT_CONFIG["silent"]
@@ -1553,12 +1622,12 @@ def __normalize_files(args: Dict[str, Any]):
 def __init_globals(
     args: Dict[str, Any],
 ) -> None:
-    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS, _COLUMN_RANGE  # pylint: disable=global-statement
+    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS, _RANGES  # pylint: disable=global-statement
 
     # init global config values
     _SILENT = args["silent"]
     _VERBOSE = args["verbose"]
-    _COLUMN_RANGE = args["column-range"]
+    _RANGES = args["ranges"]
     _GLOB_CONFIG = args
     # Clear the suppressions in case we are running as a module (i.e. in the
     # tests)
@@ -2160,7 +2229,7 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
         indentation (int):    indentation of nested statements (defaults to 2)
         disable (list):       rules (names/codes) to disable (defaults to [])
         enable (list):        rules (names/codes) to enable (defaults to ["all"])
-        column_range (bool):  whether to display column ranges on diagnostics
+        ranges (bool):        whether to display line and column ranges on diagnostics
                               (defaults to False)
         silent (bool):        no output but all rules run
         verbose (bool):       so much output you will not know what to do
