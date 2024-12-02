@@ -59,7 +59,7 @@ def test_dot_g_file1():
         "W044": 0,
         "W045": 0,
         "W046": 6,
-        "W047": 4,
+        "W047": 3,
         "W048": 0,
     }
 
@@ -410,13 +410,6 @@ def test_enable_and_disable():
                     name="analyse-lvars",
                     line=63,
                     message="Variables assigned but never used: test",
-                    filename="tests/test1.g",
-                ),
-                Diagnostic(
-                    code="W047",
-                    name="duplicate-function",
-                    line=63,
-                    message='Duplicate function with 5 > 4 lines (from "function" to "end" inclusive), previously defined at tests/test1.g:63!',
                     filename="tests/test1.g",
                 ),
                 Diagnostic(
@@ -3645,13 +3638,6 @@ def test_enable_and_disable():
                     filename="tests/filter.gi",
                 ),
                 Diagnostic(
-                    code="W047",
-                    name="duplicate-function",
-                    line=56,
-                    message='Duplicate function with 5 > 4 lines (from "function" to "end" inclusive), previously defined at tests/filter.gi:56!',
-                    filename="tests/filter.gi",
-                ),
-                Diagnostic(
                     code="W046",
                     name="unused-func-args",
                     line=63,
@@ -3670,13 +3656,6 @@ def test_enable_and_disable():
                     name="use-return-false",
                     line=78,
                     message="Replace one line function by ReturnFalse",
-                    filename="tests/filter.gi",
-                ),
-                Diagnostic(
-                    code="W047",
-                    name="duplicate-function",
-                    line=40,
-                    message='Duplicate function with 14 > 4 lines (from "function" to "end" inclusive), previously defined at tests/filter.gi:40!',
                     filename="tests/filter.gi",
                 ),
                 Diagnostic(
