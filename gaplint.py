@@ -1069,7 +1069,7 @@ class Indentation(Rule):
 
     def __init__(self, name: str, code: str, desc: str = "") -> None:
         Rule.__init__(self, name, code, desc)
-        self._expected = 0
+        self.reset()
         self._indent = re.compile(r"^(\s*)\S")
         self._blank = re.compile(r"^\s*$")
         self._before = []

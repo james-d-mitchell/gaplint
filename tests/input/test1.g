@@ -65,4 +65,8 @@ function(x)
   y := 0;
   test := rec(x := y, y := x, z := (1,2,3));
 end;
+foo := function(x, y, z)
+  Print("test");
+  return x + y + z;
+end;
 # 50 warnings
