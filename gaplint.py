@@ -1027,7 +1027,7 @@ class UnalignedPatterns(Rule):
         assert isinstance(pattern, str)
         assert isinstance(group, int)
         assert isinstance(msg, str)
-        self.reset()
+        self._last_line_col = None
         self._pattern = re.compile(pattern)
         self._group = group
         self._msg = msg
