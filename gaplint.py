@@ -577,8 +577,6 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._ws2_p = re.compile(r"\n[ \t\r\f\v]+")
         self._rec_p = re.compile(r"\brec\(")
         self._comment_p = re.compile(r" *#.*?\n")
-        self._func_bodies = []
-        self._func_position = []
 
     def reset(self) -> None:
         self._depth = -1
@@ -587,6 +585,8 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         self._assigned_lvars = []
         self._used_lvars = []
         self._func_start_pos = []
+        self._func_bodies = []
+        self._func_position = []
 
     def _remove_recs_and_whitespace(self, lines: str) -> str:
         # Remove almost all whitespace
@@ -1053,6 +1053,9 @@ class UnalignedPatterns(Rule):
                 return nr_warnings + 1, lines
         self._last_line_col = col
         return nr_warnings, lines
+
+    def reset(self) -> None:
+        self._last_line_col = None
 
 
 class Indentation(Rule):
@@ -2255,6 +2258,8 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
                     )
         too_many_warnings(nr_warnings + total_num_warnings)
         for rule in _LINE_RULES:
+            rule.reset()
+        for rule in _FILE_RULES:
             rule.reset()
         total_num_warnings += nr_warnings
 
