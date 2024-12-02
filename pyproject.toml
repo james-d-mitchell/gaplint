@@ -1,2 +1,9 @@
 [tool.black]
 line-length = 80
+
+[tool.pytest.ini_options]
+markers = [
+    "quick: marks test as quick (select with '-m \"quick\"')",
+    "extreme: marks test as extreme (select with '-m \"extreme\"')",
+]
+
