@@ -946,12 +946,18 @@ class LineTooLong(Rule):
         cols = _GLOB_CONFIG["columns"]
         if _is_tst_or_xml_file(fname):
             return nr_warnings, lines
-        if len(lines[linenum]) - 1 > cols:
+        # NOTE: (reiniscirpons) We use len(lines[linenum]) instead of
+        # len(linus[linenum]) - 1 since newlines are removed when we split
+        # lines. We do not need to worry about CR LF (\r\n) since we specify
+        # newline = None when reading opening a file, which automatically
+        # converts \r\n to \n, for more info see:
+        # https://docs.python.org/3/library/functions.html#open
+        if len(lines[linenum]) > cols:
             _warn(
                 self,
                 fname,
                 linenum,
-                f"Too long line ({len(lines[linenum]) - 1} / {cols})",
+                f"Line too long ({len(lines[linenum])} / {cols})",
             )
             nr_warnings += 1
         return nr_warnings, lines
@@ -1600,7 +1606,9 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
 
     _info_action(f"Using configurations in {config_yml_fname}")
     try:
-        with open(config_yml_fname, "r", encoding="utf-8") as config_yml_file:
+        with open(
+            config_yml_fname, "r", encoding="utf-8", newline=None
+        ) as config_yml_file:
             yml_dic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
     except (yaml.YAMLError, IOError):
         _info_action("IGNORING {config_yml_fname}: error parsing YAML")
@@ -2066,7 +2074,7 @@ def __init_file_and_line_suppressions(args: Dict[str, Any]) -> None:
 
     for fname in args["files"]:
         try:
-            with open(fname, "r", encoding="utf-8") as f:
+            with open(fname, "r", encoding="utf-8", newline=None) as f:
                 lines = f.readlines()
         except IOError:
             _info_action(f"IGNORING unreadable file {fname}!")
@@ -2234,7 +2242,7 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
     for i, fname in enumerate(args["files"]):
         __verbose_msg_per_file(args, fname, i)
         try:
-            with open(fname, "r", encoding="utf-8") as ffile:
+            with open(fname, "r", encoding="utf-8", newline=None) as ffile:
                 lines = ffile.read()
         except IOError:
             _info_action(f"SKIPPING {fname}: cannot open for reading")
