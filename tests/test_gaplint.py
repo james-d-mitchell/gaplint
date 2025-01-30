@@ -150,6 +150,74 @@ def test_dot_g_file2():
 
 
 @pytest.mark.quick
+def test_long_lines():
+    expected = {
+        "W000": 0,
+        "W001": 0,
+        "W002": 10,
+        "W003": 0,
+        "W004": 0,
+        "W005": 0,
+        "W006": 0,
+        "W007": 0,
+        "W008": 0,
+        "W009": 0,
+        "W010": 0,
+        "W011": 0,
+        "W012": 0,
+        "W013": 0,
+        "W014": 0,
+        "W015": 0,
+        "W016": 0,
+        "W017": 0,
+        "W018": 0,
+        "W019": 0,
+        "W020": 0,
+        "W021": 0,
+        "W022": 0,
+        "W023": 0,
+        "W024": 0,
+        "W025": 0,
+        "W026": 0,
+        "W027": 0,
+        "W028": 0,
+        "W029": 0,
+        "W030": 0,
+        "W031": 0,
+        "W032": 0,
+        "W033": 0,
+        "W034": 0,
+        "W035": 0,
+        "W036": 0,
+        "W037": 0,
+        "W038": 0,
+        "W039": 0,
+        "W040": 0,
+        "W041": 0,
+        "W042": 0,
+        "W043": 0,
+        "W044": 0,
+        "W045": 0,
+        "W046": 0,
+        "W047": 0,
+        "W048": 0,
+        "W049": 0,
+        "W050": 0,
+        "W051": 0,
+        "W052": 0,
+        "W053": 0,
+        "W054": 0,
+    }
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test_long_lines.g"])
+    assert e.value.code == 10
+    for code in gaplint.Rule.all_suppressible_codes():
+        with pytest.raises(SystemExit) as e:
+            run_gaplint(files=["tests/input/test_long_lines.g"], enable=code)
+        assert (expected[code], code) == (e.value.code, code)
+
+
+@pytest.mark.quick
 def test_dot_g_file3():
     # syntax error
     with pytest.raises(SystemExit) as e:
