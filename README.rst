@@ -3,9 +3,9 @@
   :alt: The gaplint logo, an image of a piece of lint with the word "GAP"
    written above it and "lint" within it.
 
-*********************************************************
-README - gaplint - by James D. Mitchell and Simon Tollman
-*********************************************************
+**************************************************************************
+README - gaplint - by Reinis Cirpons, James D. Mitchell, and Simon Tollman
+**************************************************************************
 
 ``gaplint`` automatically checks the format of a GAP file according to
 some conventions, which are somewhat configurable. It prints the nature
