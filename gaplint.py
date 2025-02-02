@@ -1388,7 +1388,7 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         "--ranges",
         dest="ranges",
         action="store_true",
-        default=default,
+        default=None,
         help=f"display a line and column range when reporting (default: {default})",
     )
 
