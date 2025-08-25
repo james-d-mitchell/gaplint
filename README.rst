@@ -243,6 +243,8 @@ configuration file ``.gaplint.yml``.
   to 2*.
 - ``max-warnings``: maximum number of warnings before ``gaplint``
   aborts. *Defaults to 1000*.
+- ``ranges``: whether to display a line and column range when reporting
+  *Defaults to only give a line number*.
 
 A list of all of the rules that ``gaplint`` can apply is given below.
 
@@ -270,7 +272,7 @@ Via comments in source files
 Any rule, including ``all``, can be suppressed for a specific line or for a
 whole file:
 
-* To supress a rule(s) for a given line, include the following after the line
+* To suppress a rule(s) for a given line, include the following after the line
   of code for which the rule is to be suppressed::
 
    # gaplint: disable=<name_or_code>, <name_or_code> ...
