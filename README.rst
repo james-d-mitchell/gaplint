@@ -243,7 +243,7 @@ configuration file ``.gaplint.yml``.
   to 2*.
 - ``max-warnings``: maximum number of warnings before ``gaplint``
   aborts. *Defaults to 1000*.
-- ``ranges``: whether to display a line and column range when reporting
+- ``ranges``: whether to display a line and column range when reporting.
   *Defaults to only give a line number*.
 
 A list of all of the rules that ``gaplint`` can apply is given below.
