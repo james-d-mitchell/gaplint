@@ -12,6 +12,21 @@ some conventions, which are somewhat configurable. It prints the nature
 and location of instances of any instances of violations of these
 conventions (see below for more details).
 
+Contributors
+============
+
+The authors of ``gaplint`` are:
+
+* Reinis Cirpons <rc234@st-andrews.ac.uk>
+* James D. Mitchell <jdm3@st-andrews.ac.uk>
+* Simon Tollman <skt4@st-andrews.ac.uk>
+
+with contributions from:
+
+* Max Horn <max@quendi.de>
+* Finn Smith <fls3@st-andrews.ac.uk>
+* Murray Whyte <mw231@st-andrews.ac.uk> 
+
 Installation
 ============
 
