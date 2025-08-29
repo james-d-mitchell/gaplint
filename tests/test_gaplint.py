@@ -9,9 +9,10 @@ import glob
 from os.path import exists, isdir
 
 import gaplint
-from gaplint import Diagnostic, Indentation
+from gaplint import Diagnostic
 from gaplint import main as run_gaplint
 
+# See tests/pickle_expected_output.py
 _INPUT_FILES = glob.glob("./tests/input/*")
 with gzip.open("./tests/expected.pkl.gz", "r") as in_file:
     _EXPECTED_DIAGNOSTICS = pickle.load(in_file)
@@ -69,11 +70,12 @@ def test_dot_g_file1():
         "W046": 6,
         "W047": 3,
         "W048": 0,
+        "W049": 1,
     }
 
     with pytest.raises(SystemExit) as e:
         run_gaplint(files=["tests/input/test1.g"])
-    assert e.value.code == 66
+    assert e.value.code == 67
     for code in gaplint.Rule.all_suppressible_codes():
         with pytest.raises(SystemExit) as e:
             run_gaplint(files=["tests/input/test1.g"], enable=code)
@@ -133,11 +135,6 @@ def test_dot_g_file2():
         "W047": 0,
         "W048": 0,
         "W049": 0,
-        "W050": 0,
-        "W051": 0,
-        "W052": 0,
-        "W053": 0,
-        "W054": 0,
     }
 
     with pytest.raises(SystemExit) as e:
@@ -202,11 +199,6 @@ def test_long_lines():
         "W047": 0,
         "W048": 0,
         "W049": 0,
-        "W050": 0,
-        "W051": 0,
-        "W052": 0,
-        "W053": 0,
-        "W054": 0,
     }
     with pytest.raises(SystemExit) as e:
         run_gaplint(files=["tests/input/test_long_lines.g"])
@@ -484,7 +476,7 @@ def test_enable_and_disable():
     ],
 )
 def test_code_diagnostics(fname, code, expected):
-    with pytest.raises(SystemExit) as e:
+    with pytest.raises(SystemExit) as _:
         run_gaplint(files=[fname], enable=code, indentation=2)
     assert len(gaplint._DIAGNOSTICS) == len(set(gaplint._DIAGNOSTICS))
     assert {

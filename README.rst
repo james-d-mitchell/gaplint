@@ -233,6 +233,9 @@ A table of all currently implemented rules is given below:
    * - W048
      - use-remove-not-unbind
      - Warns that ``Unbind(x[Length])`` can be replaced by ``Remove(x)``.
+   * - W049
+     - multiple-consecutive-semicolons
+     - Warns if there are multiple consecutive semicolons.
 
 You can obtain an explanation of a rule at the command line using the
 ``--explain`` flag, i.e. ``--explain W000,W001``.  Passing in ``--explain all``
