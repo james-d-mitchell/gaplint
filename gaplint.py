@@ -2276,12 +2276,13 @@ def __at_exit(
     if not _SILENT:
         if len(args["files"]) == 0:
             _info_action(
-                f"Error, no files found! Please check that the file path is correct."
+                "Error, no files found! Please check that the file path is correct."
             )
         else:
             t = time.process_time() - start_time
             _info_action(
-                f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!'
+                f'Analysed {len(args["files"])} files in {t:.2f}s, '
+                f"found {total_num_warnings} errors!"
             )
     sys.exit(total_num_warnings)
 
