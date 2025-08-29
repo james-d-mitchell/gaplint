@@ -1324,7 +1324,9 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
     script_name = os.path.basename(sys.argv[0])
     if script_name in ["pytest", "py.test"]:
         return {}
-    parser = argparse.ArgumentParser(prog="gaplint", usage="%(prog)s [options]")
+    parser = argparse.ArgumentParser(
+        prog="gaplint", usage="%(prog)s [options] files"
+    )
     if "files" not in kwargs:
         parser.add_argument("files", nargs="*", help="the files to lint")
 
@@ -2272,10 +2274,15 @@ def __at_exit(
     args: Dict[str, Any], total_num_warnings: int, start_time: float
 ) -> None:
     if not _SILENT:
-        t = time.process_time() - start_time
-        _info_action(
-            f"Analysed {len(args['files'])} files in {t:.2f}s, found {total_num_warnings} errors!"
-        )
+        if len(args["files"]) == 0:
+            _info_action(
+                f"Error, no files found! Please check that the file path is correct."
+            )
+        else:
+            t = time.process_time() - start_time
+            _info_action(
+                f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!'
+            )
     sys.exit(total_num_warnings)
 
 
