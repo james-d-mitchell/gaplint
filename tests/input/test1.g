@@ -70,3 +70,4 @@ foo := function(x, y, z)
   return x + y + z;
 end;
 # 50 warnings
+x := 0;;  # gaplint: disable=W014

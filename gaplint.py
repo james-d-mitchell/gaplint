@@ -1476,7 +1476,7 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
     unknown = {key for key in args if key not in _DEFAULT_CONFIG}
     if len(unknown) != 0:
         _info_action(
-            f"IGNORING unknown configuration value{'s'[:len(unknown)^1]}: {unknown} {where}"
+            f"IGNORING unknown configuration value{'s'[: len(unknown) ^ 1]}: {unknown} {where}"
         )
     # remove unknown keys
     for key in unknown:
@@ -1808,8 +1808,7 @@ def __init_rules() -> None:
         UnalignedPatterns(
             "align-assignments",
             "W004",
-            "Warns if there are assignments in consecutive lines that are not "
-            "aligned.",
+            "Warns if there are assignments in consecutive lines that are not aligned.",
             r":=",
             0,
             "Unaligned assignments in consecutive lines",
@@ -2081,8 +2080,7 @@ def __init_rules() -> None:
         WarnRegexLine(
             "no-semicolon-after-function",
             "W041",
-            "Warns if there's an unnecessary semicolon in "
-            "[code]function(.*);[/code].",
+            "Warns if there's an unnecessary semicolon in [code]function(.*);[/code].",
             r"\bfunction\b\s*\([^)]*\)\s*;",
             'Remove unnecessary semicolon in "function(.*);"',
         ),
@@ -2108,6 +2106,15 @@ def __init_rules() -> None:
             " [code]Remove(x)[/code].",
             r"\bUnbind\((\w+)\[Length\(\1\)\]\)",
             "Replace Unbind(foo[Length(foo)]) by Remove(foo)",
+        ),
+        WarnRegexLine(
+            "multiple-consecutive-semicolons",
+            "W049",
+            "Warns if there are multiple consecutive semicolons.",
+            r";;",
+            "Consecutive semicolons",
+            [],
+            _is_tst_or_xml_file,
         ),
     ]
 
@@ -2267,7 +2274,7 @@ def __at_exit(
     if not _SILENT:
         t = time.process_time() - start_time
         _info_action(
-            f'Analysed {len(args["files"])} files in {t:.2f}s, found {total_num_warnings} errors!'
+            f"Analysed {len(args['files'])} files in {t:.2f}s, found {total_num_warnings} errors!"
         )
     sys.exit(total_num_warnings)
 

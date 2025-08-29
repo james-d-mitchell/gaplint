@@ -1,4 +1,11 @@
-"""Helper script to pickle expected output of a collection of test files."""
+#!/usr/bin/env python3
+
+"""
+Helper script to pickle expected output of a collection of test files.
+
+Usage: in the gaplint/ directory run: tests/pickle_expected_output.py
+
+"""
 
 import pickle
 import gzip
