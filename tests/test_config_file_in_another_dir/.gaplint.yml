@@ -1,0 +1,3 @@
+disable: 
+- all
+config-file: other-file.yml

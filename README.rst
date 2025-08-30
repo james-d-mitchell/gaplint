@@ -252,6 +252,8 @@ configuration file ``.gaplint.yml``.
 **Configuration keywords:**
 
 - ``columns``: maximum number of characters per line. *Defaults to 80*.
+- ``config-file``: path to a config file. *Defaults to ".gaplint.yml" in git
+  repo root dir*.
 - ``disable``: rules can be disabled using their name or code.
   *Defaults to no rules disabled*.
 - ``dupl-func-min-len``: only warn about duplicate functions with at least
