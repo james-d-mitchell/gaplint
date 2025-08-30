@@ -16,6 +16,7 @@ dependencies:
   - executing=2.2.0
   - filelock=3.19.1
   - icu=75.1
+  - iniconfig=2.0.0
   - ipython=9.4.0
   - ipython_pygments_lexers=1.1.1
   - isort=6.0.1
@@ -43,6 +44,7 @@ dependencies:
   - pygments=2.19.2
   - pylint=3.3.8
   - pyproject-api=1.9.1
+  - pytest=8.4.1
   - python=3.13.5
   - python_abi=3.13
   - readline=8.2
@@ -75,6 +77,7 @@ dependencies:
       - release-gaplint==0.0.0
       - release-semigroups==0.0.0
       - rich==14.1.0
+      - setuptools==80.9.0
       - smmap==5.0.2
       - spinners==0.0.24
 prefix: /Users/jdm3/.local/share/mamba/envs/gaplint-dev

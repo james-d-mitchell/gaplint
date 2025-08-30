@@ -484,3 +484,16 @@ def test_code_diagnostics(fname, code, expected):
         for diagnostic in gaplint._DIAGNOSTICS
         if diagnostic.code == code
     } == expected
+
+
+@pytest.mark.quick
+def test_config_file():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test1.g"], config_file=".gaplint.yml")
+    assert e.value.code == 67
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(
+            files=["tests/input/test1.g"],
+            config_file="tests/test_config_file_in_another_dir/.gaplint.yml",
+        )
+    assert e.value.code == 0
