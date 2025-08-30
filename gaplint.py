@@ -632,7 +632,8 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         "W046": Rule(
             "unused-func-args",
             "W046",
-            "Warns if there are unused function parameters (use [code]_[/code] to suppress).",
+            "Warns if there are unused function parameters (use prefix [code]_[/code] "
+            "to suppress).",
         ),
         "W047": Rule(
             "duplicate-function",
@@ -772,7 +773,7 @@ class AnalyseLVars(Rule):  # pylint: disable=too-many-instance-attributes
         return nr_warnings
 
     def _check_unused_func_args(self, func_args, fname, linenum, nr_warnings):
-        func_args = [arg for arg in func_args if arg != "_"]
+        func_args = [arg for arg in func_args if not arg.startswith("_")]
         if len(func_args) != 0:
             if not _is_rule_suppressed(
                 fname, linenum + 1, AnalyseLVars.SubRules["W046"]
@@ -2281,7 +2282,7 @@ def __at_exit(
         else:
             t = time.process_time() - start_time
             _info_action(
-                f'Analysed {len(args["files"])} files in {t:.2f}s, '
+                f"Analysed {len(args['files'])} files in {t:.2f}s, "
                 f"found {total_num_warnings} errors!"
             )
     sys.exit(total_num_warnings)
