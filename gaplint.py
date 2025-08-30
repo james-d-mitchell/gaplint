@@ -115,9 +115,10 @@ _DEFAULT_CONFIG = {
     "silent": False,
     "verbose": False,
     "ranges": False,
+    "config-file": None,
 }
 
-_GLOB_CONFIG = {}
+_GLOB_CONFIG = {"config-file": None}
 _GLOB_SUPPRESSIONS = set()
 _FILE_SUPPRESSIONS = {}
 _LINE_SUPPRESSIONS = {}
@@ -1271,6 +1272,10 @@ def all_rules() -> dict[str, Rule]:
 ###############################################################################
 
 
+def __set_config_file_name(name: str):
+    _GLOB_CONFIG["config-file"] = name
+
+
 def __explain(args: Dict[str, Any]) -> None:
     if "explain" not in args or len(args["explain"]) == 0:
         return
@@ -1349,13 +1354,13 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         help=f"maximum number of characters per line (default: {default})",
     )
 
-    default = _DEFAULT_CONFIG["disable"]
+    default = ",".join(x for x in _DEFAULT_CONFIG["disable"])
     parser.add_argument(
         "--disable",
         nargs="?",
         type=str,
         default=None,
-        help=f"comma separated rule names and/or codes to disable (default: {default})",
+        help=f'comma separated rule names and/or codes to disable (default: "{default}")',
     )
 
     default = _DEFAULT_CONFIG["dupl-func-min-len"]
@@ -1420,12 +1425,22 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         version=f"%(prog)s version {vers_num}",
     )
 
+    default = _DEFAULT_CONFIG["explain"]
     parser.add_argument(
         "--explain",
         nargs="?",
         type=str,
         default="",
         help=f"comma separated rule names and/or codes to explain (default: {default})",
+    )
+
+    default = _DEFAULT_CONFIG["config-file"]
+    parser.add_argument(
+        "--config-file",
+        nargs="?",
+        type=str,
+        default=None,
+        help='path to config file (default: ".gaplint.yml" in git repo root dir)',
     )
 
     args = parser.parse_args()
@@ -1441,6 +1456,9 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         result["disable"] = set(result["disable"].split(","))
     if isinstance(result["enable"], str) and result["enable"] != "all":
         result["enable"] = set(result["enable"].split(","))
+    # We need to set this early (i.e. here) so that it can be used to pick up
+    # the config values in the file if it is specified.
+    __set_config_file_name(result["config-file"])
     return result
 
 
@@ -1453,7 +1471,7 @@ def _parse_yml_config() -> Tuple[str, Dict[str, Any]]:
             ):
                 _info_action(
                     f"IGNORING configuration value '{key}' expected 'list'"
-                    + f" but found '{type(yml_dic[key]).__name__}' ({config_yml_fname})"
+                    f" but found '{type(yml_dic[key]).__name__}' ({config_yml_fname})"
                 )
                 del yml_dic[key]
             else:
@@ -1471,6 +1489,11 @@ def _parse_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     if "max_warnings" in kwargs:
         kwargs["max-warnings"] = kwargs["max_warnings"]
         del kwargs["max_warnings"]
+    if "config_file" in kwargs:
+        __set_config_file_name(kwargs["config_file"])
+        kwargs["config-file"] = kwargs["config_file"]
+        del kwargs["config_file"]
+
     return kwargs
 
 
@@ -1493,7 +1516,11 @@ def __normalize_args(args: Dict[str, Any], where: str) -> Dict[str, Any]:
         if val is not None and (
             not (
                 isinstance(val, expected)
-                or (key == "enable" and isinstance(val, set))
+                or (
+                    key == "enable"
+                    and isinstance(val, set)
+                    or key == "config-file"
+                )
             )
         ):
             _info_action(
@@ -1702,6 +1729,10 @@ def __config_yml_path(dir_path: str) -> Union[None, str]:
     """
     assert isinstance(dir_path, str)
     assert isdir(dir_path)
+
+    if _GLOB_CONFIG["config-file"] is not None:
+        return _GLOB_CONFIG["config-file"]
+
     entries = listdir(dir_path)
 
     if ".gaplint.yml" in entries:
@@ -1721,18 +1752,36 @@ def __get_yml_dict() -> Tuple[str, Dict[str, Any]]:
     if config_yml_fname is None:
         return "", {}
 
-    _info_action(f"Using configurations in {config_yml_fname}")
     try:
         with open(
             config_yml_fname, "r", encoding="utf-8", newline=None
         ) as config_yml_file:
             yml_dic = yaml.load(config_yml_file, Loader=yaml.FullLoader)
-    except (yaml.YAMLError, IOError):
-        _info_action("IGNORING {config_yml_fname}: error parsing YAML")
+    except yaml.YAMLError:
+        _info_action(
+            f"IGNORING config file {config_yml_fname}: error parsing YAML"
+        )
         return "", {}
+    except IOError as e:
+        _info_action(
+            f'IGNORING config file "{config_yml_fname}" because of '
+            f"the following IO error:\n  {e}"
+        )
+        return "", {}
+    _info_action(f"Using configurations in {config_yml_fname}")
     # yml_dic can be None if the file is empty
     if yml_dic is None:
         yml_dic = {}
+    if "config-file" in yml_dic and _GLOB_CONFIG["config-file"] is None:
+        # In the event that _GLOB_CONFIG["config-file"] is not None, then
+        # this triggers a "CONFLICTING configuration . . ." warning, so we
+        # don't duplicate warnings by issuing this warning too.
+        _info_action(
+            f"IGNORING configuration key 'config-file' in {config_yml_fname}"
+            f"with value {yml_dic['config-file']} (specifying the config "
+            "file in the config file is not supported!)"
+        )
+
     return config_yml_fname, yml_dic
 
 
@@ -2277,7 +2326,7 @@ def __at_exit(
     if not _SILENT:
         if len(args["files"]) == 0:
             _info_action(
-                "Error, no files found! Please check that the file path is correct."
+                "Error, no files found! Please check that the file paths are correct."
             )
         else:
             t = time.process_time() - start_time
@@ -2302,6 +2351,8 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
         max_warnings (int):   the maximum number of warnings before giving up
                               (defaults to 1000)
         columns (int):        max characters per line (defaults to 80)
+        config_file (str):    path to a config file. (defaults to ".gaplint.yml" in git
+                              repo root dir).
         indentation (int):    indentation of nested statements (defaults to 2)
         disable (list):       rules (names/codes) to disable (defaults to [])
         enable (list):        rules (names/codes) to enable (defaults to ["all"])
