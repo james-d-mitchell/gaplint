@@ -967,7 +967,7 @@ InstallOtherMethod( ObjByExtRep,
     true,
     [ IsAssocWordFamily and Is32BitsFamily, IsInt, IsInt,
       IsHomogeneousList ], 0,
-    function( F, exp, maxcand, descr )
+    function( F, _exp, _maxcand, descr )
     return 32Bits_AssocWord( F!.types[3], descr );
     end );
 

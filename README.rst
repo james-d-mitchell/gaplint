@@ -226,7 +226,7 @@ A table of all currently implemented rules is given below:
        ``return not XYZ;``
    * - W046
      - unused-func-args
-     - Warns if there are unused function parameters (use ``_`` to suppress).
+     - Warns if there are unused function parameters (use prefix ``_`` to suppress).
    * - W047
      - duplicate-function
      - Warns if there is a duplicate function.

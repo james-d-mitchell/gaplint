@@ -484,3 +484,10 @@ def test_code_diagnostics(fname, code, expected):
         for diagnostic in gaplint._DIAGNOSTICS
         if diagnostic.code == code
     } == expected
+
+
+@pytest.mark.quick
+def test_unused_func_args():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/wordrep.gi"])
+    assert e.value.code == 1411
