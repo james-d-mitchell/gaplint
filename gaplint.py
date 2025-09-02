@@ -2472,6 +2472,11 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
     __at_exit(args, total_num_warnings, start_time)
 
 def main():
+    """Entrypoint for the gaplint script.
+
+    Should not be called programmatically due to issues with command line
+    argument parsing, use the `run_gaplint` function instead.
+    """
     _cmd_line_args = _parse_cmd_line_args()
     run_gaplint(_cmd_line_args)
 
