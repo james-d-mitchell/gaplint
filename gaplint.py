@@ -1320,8 +1320,12 @@ def __explain(args: Dict[str, Any]) -> None:
     sys.exit(0)
 
 
-def _parse_cmd_line_args() -> Dict[str, Any]:
-    """
+def _parse_cmd_line_args(arglist = None) -> Dict[str, Any]:
+    """Parse the given arglist.
+
+    If arglist is none, parses the arglist passed to the command invoking this
+    function.
+
     Note that the default value for each argument is set to None here, so that
     we can detect where a parameter was actually set in __merge_args. The
     actual default value is installed in __merge_args.
@@ -1439,7 +1443,10 @@ def _parse_cmd_line_args() -> Dict[str, Any]:
 
     parser.add_argument("files", nargs="*", help="the files to lint")
 
-    args = parser.parse_args()
+    if arglist is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(arglist)
 
     result = {}
     for arg in dir(args):
@@ -2371,8 +2378,14 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
         _info_verbose("Debug off . . .")
 
     # gather args from different places
+    # TODO: Clean this mess
     if _cmd_line_args is None:
-        cmd_line_args = {}
+        # This step is only done if we are not run as a script, in which case
+        # we need to initialize the command line args to have the correct
+        # defaults otherwise the __merge_args function breaks because of how its
+        # implemented.
+        cmd_line_args = _parse_cmd_line_args([])
+        cmd_line_args["files"] = None
     else:
         cmd_line_args = _cmd_line_args
     kwargs = _parse_kwargs(kwargs)
@@ -2416,7 +2429,10 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
             __at_exit(args, nr_warnings, start_time)
 
     n = len(Rule.all_suppressible_codes())
-    m = len(args["disable"])
+    if "all" not in args["disable"]:
+        m = len(args["disable"])
+    else:
+        m = n
     _info_action(
         f"Analysing {len(args['files'])} files with {n - m} / {n} rules!"
     )
