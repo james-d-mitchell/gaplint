@@ -1320,21 +1320,16 @@ def __explain(args: Dict[str, Any]) -> None:
     sys.exit(0)
 
 
-def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
+def _parse_cmd_line_args() -> Dict[str, Any]:
     """
-    Pass kwargs as an argument for the check for \"files\" o/w not needed.
     Note that the default value for each argument is set to None here, so that
     we can detect where a parameter was actually set in __merge_args. The
     actual default value is installed in __merge_args.
     """
-    script_name = os.path.basename(sys.argv[0])
-    if script_name in ["pytest", "py.test"]:
-        return {}
     parser = argparse.ArgumentParser(
         prog="gaplint", usage="%(prog)s [options] files"
     )
-    if "files" not in kwargs:
-        parser.add_argument("files", nargs="*", help="the files to lint")
+    parser.add_argument("files", nargs="*", help="the files to lint")
 
     default = _DEFAULT_CONFIG["max-warnings"]
     parser.add_argument(
@@ -2339,6 +2334,7 @@ def __at_exit(
 
 # TODO fix linting errors here
 def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
+    _cmd_line_args = None,
     **kwargs,
 ) -> None:
     """
@@ -2374,7 +2370,10 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
         _info_verbose("Debug off . . .")
 
     # gather args from different places
-    cmd_line_args = _parse_cmd_line_args(kwargs)
+    if _cmd_line_args is None:
+        cmd_line_args = {}
+    else:
+        cmd_line_args = _cmd_line_args
     kwargs = _parse_kwargs(kwargs)
     config_yml_fname, yml_dic = _parse_yml_config()
 
@@ -2457,4 +2456,5 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
 
 
 if __name__ == "__main__":
-    main()
+    _cmd_line_args = _parse_cmd_line_args()
+    main(_cmd_line_args)
