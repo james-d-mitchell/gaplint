@@ -2382,7 +2382,7 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
     if _cmd_line_args is None:
         # This step is only done if we are not run as a script, in which case
         # we need to initialize the command line args to have the correct
-        # defaults otherwise the __merge_args function breaks because of how its
+        # defaults otherwise the __merge_args function breaks because of how it's
         # implemented.
         cmd_line_args = _parse_cmd_line_args([])
         cmd_line_args["files"] = None
