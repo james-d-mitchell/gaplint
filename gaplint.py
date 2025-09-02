@@ -1438,7 +1438,6 @@ def _parse_cmd_line_args() -> Dict[str, Any]:
     )
 
     parser.add_argument("files", nargs="*", help="the files to lint")
-    print(parser.parse_args(["./examples/aaa", "./aaa", "./bbb"]))
 
     args = parser.parse_args()
 
