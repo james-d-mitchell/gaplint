@@ -1327,9 +1327,8 @@ def _parse_cmd_line_args() -> Dict[str, Any]:
     actual default value is installed in __merge_args.
     """
     parser = argparse.ArgumentParser(
-        prog="gaplint", usage="%(prog)s [options] files"
+        prog="gaplint", usage="%(prog)s [options] [files ...]"
     )
-    parser.add_argument("files", nargs="*", help="the files to lint")
 
     default = _DEFAULT_CONFIG["max-warnings"]
     parser.add_argument(
@@ -1437,6 +1436,9 @@ def _parse_cmd_line_args() -> Dict[str, Any]:
         default=None,
         help='path to config file (default: ".gaplint.yml" in git repo root dir)',
     )
+
+    parser.add_argument("files", nargs="*", help="the files to lint")
+    print(parser.parse_args(["./examples/aaa", "./aaa", "./bbb"]))
 
     args = parser.parse_args()
 
@@ -2333,7 +2335,7 @@ def __at_exit(
 
 
 # TODO fix linting errors here
-def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
+def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
     _cmd_line_args = None,
     **kwargs,
 ) -> None:
@@ -2454,7 +2456,9 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
 
     __at_exit(args, total_num_warnings, start_time)
 
+def main():
+    _cmd_line_args = _parse_cmd_line_args()
+    run_gaplint(_cmd_line_args)
 
 if __name__ == "__main__":
-    _cmd_line_args = _parse_cmd_line_args()
-    main(_cmd_line_args)
+    main()
