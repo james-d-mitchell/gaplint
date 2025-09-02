@@ -1320,21 +1320,19 @@ def __explain(args: Dict[str, Any]) -> None:
     sys.exit(0)
 
 
-def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
-    """
-    Pass kwargs as an argument for the check for \"files\" o/w not needed.
+def _parse_cmd_line_args(arglist = None) -> Dict[str, Any]:
+    """Parse the given arglist.
+
+    If arglist is none, parses the arglist passed to the command invoking this
+    function.
+
     Note that the default value for each argument is set to None here, so that
     we can detect where a parameter was actually set in __merge_args. The
     actual default value is installed in __merge_args.
     """
-    script_name = os.path.basename(sys.argv[0])
-    if script_name in ["pytest", "py.test"]:
-        return {}
     parser = argparse.ArgumentParser(
-        prog="gaplint", usage="%(prog)s [options] files"
+        prog="gaplint", usage="%(prog)s [options] [files ...]"
     )
-    if "files" not in kwargs:
-        parser.add_argument("files", nargs="*", help="the files to lint")
 
     default = _DEFAULT_CONFIG["max-warnings"]
     parser.add_argument(
@@ -1443,7 +1441,12 @@ def _parse_cmd_line_args(kwargs) -> Dict[str, Any]:
         help='path to config file (default: ".gaplint.yml" in git repo root dir)',
     )
 
-    args = parser.parse_args()
+    parser.add_argument("files", nargs="*", help="the files to lint")
+
+    if arglist is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(arglist)
 
     result = {}
     for arg in dir(args):
@@ -2338,7 +2341,8 @@ def __at_exit(
 
 
 # TODO fix linting errors here
-def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
+def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
+    _cmd_line_args = None,
     **kwargs,
 ) -> None:
     """
@@ -2374,7 +2378,16 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
         _info_verbose("Debug off . . .")
 
     # gather args from different places
-    cmd_line_args = _parse_cmd_line_args(kwargs)
+    # TODO: Clean this mess
+    if _cmd_line_args is None:
+        # This step is only done if we are not run as a script, in which case
+        # we need to initialize the command line args to have the correct
+        # defaults otherwise the __merge_args function breaks because of how it's
+        # implemented.
+        cmd_line_args = _parse_cmd_line_args([])
+        cmd_line_args["files"] = None
+    else:
+        cmd_line_args = _cmd_line_args
     kwargs = _parse_kwargs(kwargs)
     config_yml_fname, yml_dic = _parse_yml_config()
 
@@ -2416,7 +2429,10 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
             __at_exit(args, nr_warnings, start_time)
 
     n = len(Rule.all_suppressible_codes())
-    m = len(args["disable"])
+    if "all" not in args["disable"]:
+        m = len(args["disable"])
+    else:
+        m = n
     _info_action(
         f"Analysing {len(args['files'])} files with {n - m} / {n} rules!"
     )
@@ -2455,6 +2471,14 @@ def main(  # pylint: disable=too-many-locals, too-many-statements, too-many-bran
 
     __at_exit(args, total_num_warnings, start_time)
 
+def main():
+    """Entrypoint for the gaplint script.
+
+    Should not be called programmatically due to issues with command line
+    argument parsing, use the `run_gaplint` function instead.
+    """
+    _cmd_line_args = _parse_cmd_line_args()
+    run_gaplint(_cmd_line_args)
 
 if __name__ == "__main__":
     main()

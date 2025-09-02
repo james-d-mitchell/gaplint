@@ -10,7 +10,7 @@ from os.path import exists, isdir
 
 import gaplint
 from gaplint import Diagnostic
-from gaplint import main as run_gaplint
+from gaplint import run_gaplint
 
 # See tests/pickle_expected_output.py
 _INPUT_FILES = glob.glob("./tests/input/*")
