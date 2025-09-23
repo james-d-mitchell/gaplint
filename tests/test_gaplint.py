@@ -466,6 +466,7 @@ def test_enable_and_disable():
                     code=diagnostic.code,
                     filename=diagnostic.filename,
                     line=diagnostic.line,
+                    diagnostic_type=diagnostic.diagnostic_type,
                 )
                 for diagnostic in _EXPECTED_DIAGNOSTICS
                 if diagnostic.filename == filename and diagnostic.code == code
@@ -551,6 +552,58 @@ def test_diagnostic_str_ranges(fname):
                     expected = f"{diagnostic.filename}:{diagnostic.line + 1}-{diagnostic.line_end + 1}:{diagnostic.column + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
                 else:
                     expected = f"{diagnostic.filename}:{diagnostic.line + 1}-{diagnostic.line_end + 1}:{diagnostic.column + 1}-{diagnostic.column_end + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+        else:
+            assert False
+        assert str(diagnostic) == expected
+
+
+@pytest.mark.quick
+@pytest.mark.parametrize("fname", _INPUT_FILES)
+def test_diagnostic_github_annotations_str_no_ranges(fname):
+    with pytest.raises(SystemExit) as _:
+        run_gaplint(files=[fname], indentation=2, github_annotations=True)
+
+    for diagnostic in gaplint._DIAGNOSTICS:
+        expected = f"::{diagnostic.diagnostic_type} file={diagnostic.filename},line={diagnostic.line + 1},title=[{diagnostic.code}/{diagnostic.name}]::{diagnostic.message}"
+        assert str(diagnostic) == expected
+
+
+@pytest.mark.quick
+@pytest.mark.parametrize("fname", _INPUT_FILES)
+def test_diagnostic_github_annotations_str_ranges(fname):
+    with pytest.raises(SystemExit) as _:
+        run_gaplint(
+            files=[fname], indentation=2, github_annotations=True, ranges=True
+        )
+
+    for diagnostic in gaplint._DIAGNOSTICS:
+        if (
+            diagnostic.line_end is None
+            or diagnostic.line == diagnostic.line_end
+        ):
+            if diagnostic.column is None:
+                assert diagnostic.column_end is None
+                expected = f"::{diagnostic.diagnostic_type} file={diagnostic.filename},line={diagnostic.line + 1},title=[{diagnostic.code}/{diagnostic.name}]::{diagnostic.message}"
+            else:
+                if (
+                    diagnostic.column_end is None
+                    or diagnostic.column == diagnostic.column_end
+                ):
+                    expected = f"::{diagnostic.diagnostic_type} file={diagnostic.filename},line={diagnostic.line + 1},col={diagnostic.column + 1},title=[{diagnostic.code}/{diagnostic.name}]::{diagnostic.message}"
+                else:
+                    expected = f"::{diagnostic.diagnostic_type} file={diagnostic.filename},line={diagnostic.line + 1},col={diagnostic.column + 1},endColumn={diagnostic.column_end + 1},title=[{diagnostic.code}/{diagnostic.name}]::{diagnostic.message}"
+        elif diagnostic.line_end is not None:
+            if diagnostic.column is None:
+                assert diagnostic.column_end is None
+                expected = f"::{diagnostic.diagnostic_type} file={diagnostic.filename},line={diagnostic.line + 1},endLine={diagnostic.line_end + 1},title=[{diagnostic.code}/{diagnostic.name}]::{diagnostic.message}"
+            else:
+                if (
+                    diagnostic.column_end is None
+                    or diagnostic.column == diagnostic.column_end
+                ):
+                    expected = f"::{diagnostic.diagnostic_type} file={diagnostic.filename},line={diagnostic.line + 1},endLine={diagnostic.line_end + 1},col={diagnostic.column + 1},title=[{diagnostic.code}/{diagnostic.name}]::{diagnostic.message}"
+                else:
+                    expected = f"::{diagnostic.diagnostic_type} file={diagnostic.filename},line={diagnostic.line + 1},endLine={diagnostic.line_end + 1},col={diagnostic.column + 1},endColumn={diagnostic.column_end + 1},title=[{diagnostic.code}/{diagnostic.name}]::{diagnostic.message}"
         else:
             assert False
         assert str(diagnostic) == expected
