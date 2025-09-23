@@ -504,3 +504,53 @@ def test_config_file():
             config_file="tests/test_config_file_in_another_dir/.gaplint.yml",
         )
     assert e.value.code == 0
+
+
+@pytest.mark.quick
+@pytest.mark.parametrize("fname", _INPUT_FILES)
+def test_diagnostic_str_no_ranges(fname):
+    with pytest.raises(SystemExit) as _:
+        run_gaplint(files=[fname], indentation=2)
+
+    for diagnostic in gaplint._DIAGNOSTICS:
+        expected = f"{diagnostic.filename}:{diagnostic.line + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+        assert str(diagnostic) == expected
+
+
+@pytest.mark.quick
+@pytest.mark.parametrize("fname", _INPUT_FILES)
+def test_diagnostic_str_ranges(fname):
+    with pytest.raises(SystemExit) as _:
+        run_gaplint(files=[fname], indentation=2, ranges=True)
+
+    for diagnostic in gaplint._DIAGNOSTICS:
+        if (
+            diagnostic.line_end is None
+            or diagnostic.line == diagnostic.line_end
+        ):
+            if diagnostic.column is None:
+                assert diagnostic.column_end is None
+                expected = f"{diagnostic.filename}:{diagnostic.line + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+            else:
+                if (
+                    diagnostic.column_end is None
+                    or diagnostic.column == diagnostic.column_end
+                ):
+                    expected = f"{diagnostic.filename}:{diagnostic.line + 1}:{diagnostic.column + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+                else:
+                    expected = f"{diagnostic.filename}:{diagnostic.line + 1}:{diagnostic.column + 1}-{diagnostic.column_end + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+        elif diagnostic.line_end is not None:
+            if diagnostic.column is None:
+                assert diagnostic.column_end is None
+                expected = f"{diagnostic.filename}:{diagnostic.line + 1}-{diagnostic.line_end + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+            else:
+                if (
+                    diagnostic.column_end is None
+                    or diagnostic.column == diagnostic.column_end
+                ):
+                    expected = f"{diagnostic.filename}:{diagnostic.line + 1}-{diagnostic.line_end + 1}:{diagnostic.column + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+                else:
+                    expected = f"{diagnostic.filename}:{diagnostic.line + 1}-{diagnostic.line_end + 1}:{diagnostic.column + 1}-{diagnostic.column_end + 1}: {diagnostic.message} [{diagnostic.code}/{diagnostic.name}]"
+        else:
+            assert False
+        assert str(diagnostic) == expected
