@@ -65,6 +65,7 @@ class Diagnostic:  # pylint: disable=too-many-instance-attributes
 _VERBOSE = False
 _SILENT = False
 _RANGES = False
+_GITHUB_ANNOTATIONS = False
 _GAP_KEYWORDS = {
     "and",
     "atomic",
@@ -115,6 +116,7 @@ _DEFAULT_CONFIG = {
     "silent": False,
     "verbose": False,
     "ranges": False,
+    "github-annotations": False,
     "config-file": None,
 }
 
@@ -1320,7 +1322,7 @@ def __explain(args: Dict[str, Any]) -> None:
     sys.exit(0)
 
 
-def _parse_cmd_line_args(arglist = None) -> Dict[str, Any]:
+def _parse_cmd_line_args(arglist=None) -> Dict[str, Any]:
     """Parse the given arglist.
 
     If arglist is none, parses the arglist passed to the command invoking this
@@ -1396,6 +1398,15 @@ def _parse_cmd_line_args(arglist = None) -> Dict[str, Any]:
         action="store_true",
         default=None,
         help=f"display a line and column range when reporting (default: {default})",
+    )
+
+    default = _DEFAULT_CONFIG["github-annotations"]
+    parser.add_argument(
+        "--github-annotations",
+        dest="github_annotations",
+        action="store_true",
+        default=None,
+        help=f"output diagnostics in GitHub annotation format (default: {default})",
     )
 
     default = _DEFAULT_CONFIG["silent"]
@@ -1700,12 +1711,14 @@ def __normalize_files(args: Dict[str, Any]):
 def __init_globals(
     args: Dict[str, Any],
 ) -> None:
-    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS, _RANGES  # pylint: disable=global-statement
+    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS  # pylint: disable=global-statement
+    global _RANGES, _GITHUB_ANNOTATIONS  # pylint: disable=global-statement
 
     # init global config values
     _SILENT = args["silent"]
     _VERBOSE = args["verbose"]
     _RANGES = args["ranges"]
+    _GITHUB_ANNOTATIONS = args["github-annotations"]
     _GLOB_CONFIG = args
     # Clear the suppressions in case we are running as a module (i.e. in the
     # tests)
@@ -2342,7 +2355,7 @@ def __at_exit(
 
 # TODO fix linting errors here
 def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
-    _cmd_line_args = None,
+    _cmd_line_args=None,
     **kwargs,
 ) -> None:
     """
@@ -2350,20 +2363,22 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
     the keywords argument files.
 
     Keyword Args:
-        files (list):         a list of the filenames (str) of the files to
-                              lint
-        max_warnings (int):   the maximum number of warnings before giving up
-                              (defaults to 1000)
-        columns (int):        max characters per line (defaults to 80)
-        config_file (str):    path to a config file. (defaults to ".gaplint.yml" in git
-                              repo root dir).
-        indentation (int):    indentation of nested statements (defaults to 2)
-        disable (list):       rules (names/codes) to disable (defaults to [])
-        enable (list):        rules (names/codes) to enable (defaults to ["all"])
-        ranges (bool):        whether to display line and column ranges on diagnostics
-                              (defaults to False)
-        silent (bool):        no output but all rules run
-        verbose (bool):       so much output you will not know what to do
+        files (list):              a list of the filenames (str) of the files to
+                                   lint
+        max_warnings (int):        the maximum number of warnings before giving up
+                                   (defaults to 1000)
+        columns (int):             max characters per line (defaults to 80)
+        config_file (str):         path to a config file. (defaults to ".gaplint.yml" in git
+                                   repo root dir).
+        indentation (int):         indentation of nested statements (defaults to 2)
+        disable (list):            rules (names/codes) to disable (defaults to [])
+        enable (list):             rules (names/codes) to enable (defaults to ["all"])
+        ranges (bool):             whether to display line and column ranges on diagnostics
+                                   (defaults to False)
+        github_annotations (bool): output diagnostics in GitHub annotation format
+                                   (defaults to False)
+        silent (bool):             no output but all rules run
+        verbose (bool):            so much output you will not know what to do
     """
 
     start_time = time.process_time()
@@ -2471,6 +2486,7 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
 
     __at_exit(args, total_num_warnings, start_time)
 
+
 def main():
     """Entrypoint for the gaplint script.
 
@@ -2479,6 +2495,7 @@ def main():
     """
     _cmd_line_args = _parse_cmd_line_args()
     run_gaplint(_cmd_line_args)
+
 
 if __name__ == "__main__":
     main()
