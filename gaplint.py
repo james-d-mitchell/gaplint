@@ -1823,7 +1823,7 @@ def __init_rules() -> None:
             "assign-then-return",
             "W033",
             "Warns if a variable is pointlessly assigned and then immediately returned.",
-            r"(\w+)\s*:=[^;]*;\n\s*return\s+(\1);",
+            r"\s(\w+)\s*:=[^;]*;\n\s*return\s+(\1);",
             "Pointless assignment immediately returned",
         ),
         WarnRegexFile(

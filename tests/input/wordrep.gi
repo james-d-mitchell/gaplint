@@ -1643,3 +1643,8 @@ local l,r,i,j,b,p,lc;
   od;
   return l;
 end);
+
+InstallGlobalFunction(MadeUpFunc, function(L)
+  L!.id := 0;
+  return id;
+end);
