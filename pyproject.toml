@@ -7,3 +7,14 @@ markers = [
     "extreme: marks test as extreme (select with '-m \"extreme\"')",
 ]
 
+[tool.pylint."MESSAGES CONTROL"]
+good-names = [
+    "_FILE_RULES",
+    "_FILE_SUPPRESSIONS",
+    "_GLOB_CONFIG",
+    "_LINE_RULES",
+    "_LINE_SUPPRESSIONS",
+    "_RANGES",
+    "_SILENT",
+    "_VERBOSE",
+]
