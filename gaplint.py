@@ -29,12 +29,262 @@ import yaml
 
 
 @dataclass(frozen=True)
+class DiagnosticFormatter:
+    """A formatter for diagnostics.
+
+    Attributes
+    ----------
+    has_column_format: str
+        A format string specifying how a diagnostic containing both line
+        and range data should be printed.
+    no_column_format: str | None = None
+        A format string specifying how a diagnostic containing only line
+        data should be printed. Defaults to `None`. If set to `None`, then
+        treated as equal to `has_column_format`.
+    line_range_format: tuple[str, str, str] = ("{}", "-", "{}")
+        A triple specifying the formatting of the pair `(line, line_end)`.
+        For example, the default format will format the pair `(1, 10)` as
+        `"1-11"`.
+    column_range_format: tuple[str, str, str] = ("{}", "-", "{}")
+        A triple specifying the formatting of the pair `(column, column_end)`.
+    line_offset: int = 1
+        The offset to use for `line`, `line_end`, `line_range` fields. Adjusts
+        the indexing of the first line. Defaults to 1.
+    column_offset: int = 1
+        The offset to use for `column`, `column_end`, `column_range` fields.
+        Adjusts the indexing of the first column. Defaults to 1.
+
+    See Also
+    --------
+    DiagnosticFormatter.format_diagnostic: More information on formatting.
+    DiagnosticFormatter.format_range: More information on range formatting.
+
+    Notes
+    -----
+
+    The following fields are available for use in the `format` and
+    `no_column_format` attributes:
+
+    +-------------------+-----------------------------------------------------+
+    | field             | Description                                         |
+    +-------------------+-----------------------------------------------------+
+    | `code`            | See `Diagnostic.code`.                              |
+    +-------------------+-----------------------------------------------------+
+    | `name`            | See `Diagnostic.name`.                              |
+    +-------------------+-----------------------------------------------------+
+    | `message`         | See `Diagnostic.message`.                           |
+    +-------------------+-----------------------------------------------------+
+    | `filename`        | See `Diagnostic.filename`.                          |
+    +-------------------+-----------------------------------------------------+
+    | `line`            | See `Diagnostic.line`. Offset by the formatter      |
+    |                   | `offset` attribute.                                 |
+    +-------------------+-----------------------------------------------------+
+    | `line_end`        | See `Diagnostic.line_end`. Offset by the formatter  |
+    |                   | `offset` attribute. May be `None`!                  |
+    +-------------------+-----------------------------------------------------+
+    | `line_range`      | A formatted `(line, line_end)` pair. Formatted      |
+    |                   | according to the `line_range_format` attribute of   |
+    |                   | the formatter.                                      |
+    +-------------------+-----------------------------------------------------+
+    | `column`          | See `Diagnostic.column`. Offset by the formatter    |
+    |                   | `offset` attribute. May be `None`!                  |
+    +-------------------+-----------------------------------------------------+
+    | `column_end`      | See `Diagnostic.column_end`. Offset by the          |
+    |                   | formatter `offset` attribute. May be `None`!        |
+    +-------------------+-----------------------------------------------------+
+    | `column_range`    | A formatted `(column, column_end)` pair. Formatted  |
+    |                   | according to the `column_range_format` attribute of |
+    |                   | the formatter. Is `None` if `column` is `None`.     |
+    +-------------------+-----------------------------------------------------+
+    | `diagnostic_type` | See `Diagnostic.diagnostic_type`.                   |
+    +-------------------+-----------------------------------------------------+
+
+    Since `line_end` and `column_end` may be `None`, it is not advised to use
+    these fields in `has_column_format` or `no_column_format` directly.
+
+    The fields `line_range` and `column_range` are
+    intended to be friendly wrappers around `(line, line_end)` and `(column,
+    column_end)` pairs which handle the edge case where `line_end` or
+    `column_end` is `None` gracefully. Note that if `column` is `None`, then
+    `column_range` is also `None`.
+
+    The `has_column_format` format string is used for formatting diagnostics
+    where `column` (and therefore `column_range`) is not `None`. The
+    `no_column_format` is used instead when `column` is `None`. Hence
+    the `column` and `column_range` fields should only be used in the
+    `has_column_format` and not the `no_column_format` strings.
+
+    The `line_range_format` and `column_range_format` attributes are intended
+    to format pairs of the form `(start, end)`. Each range format variable is
+    a triple `(start_format, sep, end_format)`, where `start_format` and
+    `end_format` are two format strings taking a single anonymous variable and
+    `sep` is a regular string that is used as a separator. As such the
+    `start_format` and `end_format` strings should only use `{}` and `{0}`
+    string format replacement fields.
+    """
+
+    has_column_format: str
+    no_column_format: Union[str, None] = None
+    line_range_format: Tuple[str, str, str] = ("{}", "-", "{}")
+    column_range_format: Tuple[str, str, str] = ("{}", "-", "{}")
+    line_offset: int = 1
+    column_offset: int = 1
+
+    @staticmethod
+    def format_range(
+        start: Union[int, None],
+        end: Union[int, None],
+        range_format: Tuple[str, str, str],
+    ) -> Union[str, None]:
+        """Format a range using a range format specifier.
+
+        Let `range_format = (start_format, sep, end_format)`.
+        If `start` is `None`, then formatting is aborted and returns `None`.
+        Otherwise, if `end` is `None` or if `start == end`, then formatting
+        proceeds as if the range is the singleton `start`. In other words
+        `start` formatted by `start_format` and returned. Otherwise,
+        both `start` and `end` are formatted and their concatenation, separated
+        by `sep` is returned.
+
+        Parameters
+        ----------
+        start: int | None
+            The start of the range or `None`.
+        end: int | None
+            The end of the range or `None`.
+        range_format: tuple[str, str, str]
+            A tuple defining the formatting for the pair `(start, end)`.
+
+        Returns
+        -------
+        str | None
+            Returns `None` only if `start` is `None`. Otherwise, if `end` is
+            `None` or `start == end`, returns a formatted `start`. Otherwise
+            returns a formatted pair `(start, end)`.
+
+        See Also
+        --------
+        DiagnosticFormatter: For a description of the range formatting as it
+                             applies to a particular instance.
+        """
+        start_fstring, sep, end_fstring = range_format
+        if start is None:
+            # If there is no start then bail
+            return None
+
+        if end is None or start == end:
+            return start_fstring.format(start)
+
+        return "".join(
+            [
+                start_fstring.format(start),
+                sep,
+                end_fstring.format(end),
+            ]
+        )
+
+    def format_diagnostic(self, diagnostic: "Diagnostic") -> str:
+        """Format a diagnostic.
+
+        Uses `DiagnosticFormatter.format_range` to format the line and column
+        ranges, producing `line_range` and `column_range` fields. Then uses the
+        `has_column_format` to format the diagnostic if `diagnostic.column` is
+        not `None`. Otherwise uses `no_column_format`. If `no_column_format` is
+        `None`, it is assumed to be the same as `has_column_format`.
+
+        See Also
+        --------
+        DiagnosticFormatter: For a description of the fields available to
+                             the formatter.
+        DiagnosticFormatter.format_range: More information on range formatting.
+        """
+        fstring = self.has_column_format
+        if diagnostic.column is None and self.no_column_format is not None:
+            fstring = self.no_column_format
+
+        fields = {
+            name: getattr(diagnostic, name)
+            for name in (
+                "code",
+                "name",
+                "message",
+                "filename",
+                "diagnostic_type",
+            )
+        }
+        for prefix, offset, range_format in (
+            ("line", self.line_offset, self.line_range_format),
+            ("column", self.column_offset, self.column_range_format),
+        ):
+            for suffix in ("", "_end"):
+                name = prefix + suffix
+                val = getattr(diagnostic, name)
+                if val is not None:
+                    val += offset
+                fields[name] = val
+            fields[prefix + "_range"] = DiagnosticFormatter.format_range(
+                fields[prefix], fields[prefix + "_end"], range_format
+            )
+
+        return fstring.format(**fields)
+
+
+_FORMATTERS = {
+    "default": DiagnosticFormatter(
+        has_column_format="{filename}:{line_range}:{column_range}: {message} [{code}/{name}]",
+        no_column_format="{filename}:{line_range}: {message} [{code}/{name}]",
+        line_range_format=("{}", "-", "{}"),
+        column_range_format=("{}", "-", "{}"),
+        line_offset=1,
+        column_offset=1,
+    ),
+    "github": DiagnosticFormatter(
+        has_column_format="::{diagnostic_type} file={filename},{line_range},{column_range},"
+        "title=[{code}/{name}]::{message}",
+        no_column_format="::{diagnostic_type} file={filename},{line_range},"
+        "title=[{code}/{name}]::{message}",
+        line_range_format=("line={}", ",", "endLine={}"),
+        column_range_format=("col={}", ",", "endColumn={}"),
+        line_offset=1,
+        column_offset=1,
+    ),
+}
+
+
+@dataclass(frozen=True)
 class Diagnostic:  # pylint: disable=too-many-instance-attributes
     """A diagnostic wrapper class.
 
     Note that the diagnostic line and column numbers are offset by 1 wrt the
     lines and columns of the document, i.e. line 1 of the document will be line
     0 in the diagnostic.
+
+    Attributes
+    ----------
+    code: str
+        The error or warning code of the diagnostic, e.g. "W000".
+    name: str
+        The short name of the diagnostic, e.g. "analyse-lvars"
+    message: str
+        The error or warning message of the diagnostic.
+    filename: str
+        The filename where the diagnostic originates from.
+    line: int
+        The line in `filename` where the diagnostic starts, 0-indexed.
+    line_end: int | None
+        The line in `filename` where the diagnostic ends, 0-indexed.
+        Assumed equal to line if missing.
+    column: int | None
+        The column of line `line` in `filename` where the diagnostic starts,
+        0-indexed. If missing diagnostic assumed to apply to whole line or line
+        range.
+    column_end: int | None
+        The column of line `line_end` in `filename` where the diagnostic ends,
+        0-indexed. If missing diagnostic assumed to apply to whole line or line
+        range.
+    diagnostic_type: str
+        The type of the diagnostic. Currently assumed to be either "warning"
+        for warnings or "error" for errors.
     """
 
     code: str
@@ -45,17 +295,13 @@ class Diagnostic:  # pylint: disable=too-many-instance-attributes
     line_end: Union[int, None] = None
     column: Union[int, None] = None
     column_end: Union[int, None] = None
+    diagnostic_type: str = "warning"
 
     def __str__(self) -> str:
-        parts = [f"{self.filename}", f"{self.line + 1}"]
-        if self.line_end is not None and self.line != self.line_end:
-            parts[-1] += f"-{self.line_end + 1}"
-        if self.column is not None:
-            parts.append(f"{self.column + 1}")
-            if self.column_end is not None and self.column != self.column_end:
-                parts[-1] += f"-{self.column_end + 1}"
-        parts.append(f" {self.message} [{self.code}/{self.name}]")
-        return ":".join(parts)
+        formatter = "default"
+        if _GITHUB_ANNOTATIONS:
+            formatter = "github"
+        return _FORMATTERS[formatter].format_diagnostic(self)
 
 
 ###############################################################################
@@ -65,6 +311,7 @@ class Diagnostic:  # pylint: disable=too-many-instance-attributes
 _VERBOSE = False
 _SILENT = False
 _RANGES = False
+_GITHUB_ANNOTATIONS = False
 _GAP_KEYWORDS = {
     "and",
     "atomic",
@@ -115,6 +362,7 @@ _DEFAULT_CONFIG = {
     "silent": False,
     "verbose": False,
     "ranges": False,
+    "github-annotations": False,
     "config-file": None,
 }
 
@@ -199,6 +447,7 @@ def _warn_or_error(  # pylint: disable=too-many-arguments, too-many-positional-a
     line_end: Union[int, None] = None,
     column: Union[int, None] = None,
     column_end: Union[int, None] = None,
+    diagnostic_type: str = "warning",
 ) -> None:
     if not _SILENT:
         assert isinstance(fname, str)
@@ -214,6 +463,7 @@ def _warn_or_error(  # pylint: disable=too-many-arguments, too-many-positional-a
                 line_end=line_end,
                 column=column,
                 column_end=column_end,
+                diagnostic_type=diagnostic_type,
             )
         else:
             diagnostic = Diagnostic(
@@ -222,6 +472,7 @@ def _warn_or_error(  # pylint: disable=too-many-arguments, too-many-positional-a
                 message=msg,
                 filename=fname,
                 line=linenum,
+                diagnostic_type=diagnostic_type,
             )
         sys.stderr.write(str(diagnostic) + "\n")
         _DIAGNOSTICS.append(diagnostic)
@@ -236,7 +487,16 @@ def _warn(  # pylint: disable=too-many-arguments, too-many-positional-arguments
     column: Union[int, None] = None,
     column_end: Union[int, None] = None,
 ) -> None:
-    _warn_or_error(rule, fname, linenum, msg, line_end, column, column_end)
+    _warn_or_error(
+        rule,
+        fname,
+        linenum,
+        msg,
+        line_end,
+        column,
+        column_end,
+        diagnostic_type="warning",
+    )
 
 
 def _error(  # pylint: disable=too-many-arguments, too-many-positional-arguments
@@ -248,7 +508,16 @@ def _error(  # pylint: disable=too-many-arguments, too-many-positional-arguments
     column: Union[int, None] = None,
     column_end: Union[int, None] = None,
 ) -> None:
-    _warn_or_error(rule, fname, linenum, msg, line_end, column, column_end)
+    _warn_or_error(
+        rule,
+        fname,
+        linenum,
+        msg,
+        line_end,
+        column,
+        column_end,
+        diagnostic_type="error",
+    )
     sys.stderr.write("Aborting!\n")
     sys.exit(1)
 
@@ -1320,7 +1589,7 @@ def __explain(args: Dict[str, Any]) -> None:
     sys.exit(0)
 
 
-def _parse_cmd_line_args(arglist = None) -> Dict[str, Any]:
+def _parse_cmd_line_args(arglist=None) -> Dict[str, Any]:
     """Parse the given arglist.
 
     If arglist is none, parses the arglist passed to the command invoking this
@@ -1396,6 +1665,15 @@ def _parse_cmd_line_args(arglist = None) -> Dict[str, Any]:
         action="store_true",
         default=None,
         help=f"display a line and column range when reporting (default: {default})",
+    )
+
+    default = _DEFAULT_CONFIG["github-annotations"]
+    parser.add_argument(
+        "--github-annotations",
+        dest="github_annotations",
+        action="store_true",
+        default=None,
+        help=f"output diagnostics in GitHub annotation format (default: {default})",
     )
 
     default = _DEFAULT_CONFIG["silent"]
@@ -1492,6 +1770,9 @@ def _parse_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     if "max_warnings" in kwargs:
         kwargs["max-warnings"] = kwargs["max_warnings"]
         del kwargs["max_warnings"]
+    if "github_annotations" in kwargs:
+        kwargs["github-annotations"] = kwargs["github_annotations"]
+        del kwargs["github_annotations"]
     if "config_file" in kwargs:
         __set_config_file_name(kwargs["config_file"])
         kwargs["config-file"] = kwargs["config_file"]
@@ -1700,12 +1981,14 @@ def __normalize_files(args: Dict[str, Any]):
 def __init_globals(
     args: Dict[str, Any],
 ) -> None:
-    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS, _RANGES  # pylint: disable=global-statement
+    global _SILENT, _VERBOSE, _GLOB_CONFIG, _LINE_SUPPRESSIONS, _FILE_SUPPRESSIONS  # pylint: disable=global-statement
+    global _RANGES, _GITHUB_ANNOTATIONS  # pylint: disable=global-statement
 
     # init global config values
     _SILENT = args["silent"]
     _VERBOSE = args["verbose"]
     _RANGES = args["ranges"]
+    _GITHUB_ANNOTATIONS = args["github-annotations"]
     _GLOB_CONFIG = args
     # Clear the suppressions in case we are running as a module (i.e. in the
     # tests)
@@ -2342,7 +2625,7 @@ def __at_exit(
 
 # TODO fix linting errors here
 def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-many-branches
-    _cmd_line_args = None,
+    _cmd_line_args=None,
     **kwargs,
 ) -> None:
     """
@@ -2350,20 +2633,22 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
     the keywords argument files.
 
     Keyword Args:
-        files (list):         a list of the filenames (str) of the files to
-                              lint
-        max_warnings (int):   the maximum number of warnings before giving up
-                              (defaults to 1000)
-        columns (int):        max characters per line (defaults to 80)
-        config_file (str):    path to a config file. (defaults to ".gaplint.yml" in git
-                              repo root dir).
-        indentation (int):    indentation of nested statements (defaults to 2)
-        disable (list):       rules (names/codes) to disable (defaults to [])
-        enable (list):        rules (names/codes) to enable (defaults to ["all"])
-        ranges (bool):        whether to display line and column ranges on diagnostics
-                              (defaults to False)
-        silent (bool):        no output but all rules run
-        verbose (bool):       so much output you will not know what to do
+        files (list):              a list of the filenames (str) of the files to
+                                   lint
+        max_warnings (int):        the maximum number of warnings before giving up
+                                   (defaults to 1000)
+        columns (int):             max characters per line (defaults to 80)
+        config_file (str):         path to a config file. (defaults to ".gaplint.yml" in git
+                                   repo root dir).
+        indentation (int):         indentation of nested statements (defaults to 2)
+        disable (list):            rules (names/codes) to disable (defaults to [])
+        enable (list):             rules (names/codes) to enable (defaults to ["all"])
+        ranges (bool):             whether to display line and column ranges on diagnostics
+                                   (defaults to False)
+        github_annotations (bool): output diagnostics in GitHub annotation format
+                                   (defaults to False)
+        silent (bool):             no output but all rules run
+        verbose (bool):            so much output you will not know what to do
     """
 
     start_time = time.process_time()
@@ -2471,6 +2756,7 @@ def run_gaplint(  # pylint: disable=too-many-locals, too-many-statements, too-ma
 
     __at_exit(args, total_num_warnings, start_time)
 
+
 def main():
     """Entrypoint for the gaplint script.
 
@@ -2479,6 +2765,7 @@ def main():
     """
     _cmd_line_args = _parse_cmd_line_args()
     run_gaplint(_cmd_line_args)
+
 
 if __name__ == "__main__":
     main()

@@ -12,7 +12,7 @@ import gzip
 from glob import glob
 
 import gaplint
-from gaplint import main as run_gaplint
+from gaplint import run_gaplint
 
 _INPUT_FILES = "./tests/input/*"
 _EXPECTED_FILENAME = "./tests/expected.pkl.gz"
