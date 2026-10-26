@@ -30,6 +30,8 @@ with contributions from:
 Installation
 ============
 
+``gaplint`` requires Python 3.10 or later.
+
 Simply run::
 
     $ pip install gaplint
